@@ -2,7 +2,6 @@
 .env
 
 # Database
-data/.last_daily_update
 
 # Python
 __pycache__/

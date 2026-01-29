@@ -17,7 +17,7 @@ UPDATE_EXIT=$?
 # If the update succeeded, push the database to GitHub
 if [ $UPDATE_EXIT -eq 0 ]; then
     echo "Pushing updated database to GitHub..."
-    git add data/nba_betting.db
+    git add data/nba_betting.db data/.last_daily_update
     git commit -m "Daily database update $(date +%Y-%m-%d)"
     git push
     echo "Database pushed to GitHub — Railway will auto-deploy."
