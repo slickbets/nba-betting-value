@@ -96,7 +96,7 @@ Every team starts at 1500 Elo. After each game:
 - Winner gains points, loser loses points
 - Amount exchanged depends on expected outcome
 - Beating a strong team = more points gained
-- Home court adds 100 Elo points (~4 point spread advantage)
+- Home court adds 35 Elo points (~1.4 point spread advantage)
 
 ### Win Probability
 
@@ -159,7 +159,7 @@ Edit `config.py` to adjust:
 ```python
 # Elo Parameters
 ELO_K_FACTOR = 20.0           # Rating volatility
-ELO_HOME_ADVANTAGE = 100.0    # Home court bonus
+ELO_HOME_ADVANTAGE = 35.0     # Home court bonus
 ELO_INITIAL_RATING = 1500.0   # Starting rating
 
 # Value Bet Thresholds
@@ -179,7 +179,7 @@ pytest tests/ -v
 - Elo is a simple model - historical accuracy is ~60-65% on straight predictions
 - This is for educational purposes - no guarantee of profit
 - The Odds API free tier has limited requests (500/month)
-- RAPTOR player impact data requires manual updates (see `data/raptor_current.csv`)
+- Player impact data depends on NBA API availability (players with 0 GP not tracked)
 
 ## Roadmap
 
@@ -190,23 +190,23 @@ pytest tests/ -v
 - [x] Value bet detection with Kelly sizing
 - [x] Bet tracking and auto-settlement
 - [x] Streamlit dashboard
-- [x] **Player injury adjustments** - Adjust Elo based on injured players using RAPTOR impact values
-
-### In Progress
-*(nothing currently)*
+- [x] **Player injury adjustments** - Adjust Elo based on injured players using auto-calculated impact ratings
+- [x] **Offensive/Defensive Elo** - Separate O-Elo and D-Elo for matchup modeling and predicted totals
+- [x] **Auto player impact** - NBA API-sourced ratings for 300+ players (NET_RATING × MPG × USG%)
+- [x] **Back-to-back / rest day factors** - B2B penalty and rest advantage adjustments
+- [x] **Margin-of-victory Elo** - Blowout wins worth more than close games
+- [x] **K-factor decay** - Higher K early season for faster calibration
+- [x] **Model accuracy tracking** - Pick accuracy, spread error, confidence analysis
 
 ### Up Next
-- [ ] **Back-to-back / rest day factors** - Reduce team Elo when on second night of back-to-back, boost when well-rested
-- [ ] **Enable margin-of-victory Elo** - Code exists in `elo.py` (`update_elo_with_mov`), just needs to be wired up
-- [ ] **Spread/total predictions** - Extend value finder to analyze spread and over/under markets
+- [ ] **Spread/total value betting** - Find value on spreads and totals (not just moneyline)
+- [ ] **Historical backtesting** - Validate model accuracy on past seasons
 
 ### Future Ideas
-- [ ] Calculate own player impact metric from box scores (replace estimated RAPTOR)
 - [ ] Historical injury impact analysis (backtest accuracy)
-- [ ] ML model using advanced stats (scikit-learn already in requirements)
-- [ ] Better odds-to-game ID matching in odds_fetcher.py
+- [ ] ML model using advanced stats
 - [ ] Multi-sport expansion
 
 ### Technical Debt
-- [ ] `src/data/odds_fetcher.py:192` - Match odds to internal game_id using teams + date
-- [ ] `src/data/odds_fetcher.py:284` - Add spread/total support in `get_best_odds()`
+- [ ] `src/data/odds_fetcher.py:192` - Better odds-to-game matching
+- [ ] `src/data/odds_fetcher.py:284` - Add spread/total support
