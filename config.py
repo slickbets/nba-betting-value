@@ -10,7 +10,7 @@ load_dotenv()
 # Paths
 PROJECT_ROOT = Path(__file__).parent
 DATA_DIR = PROJECT_ROOT / "data"
-DB_PATH = Path(os.getenv("DB_PATH", str(DATA_DIR / "nba_betting.db")))
+DB_PATH = DATA_DIR / "nba_betting.db"
 
 # API Keys
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")

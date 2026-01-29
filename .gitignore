@@ -2,7 +2,6 @@
 .env
 
 # Database
-data/*.db
 data/.last_daily_update
 
 # Python
