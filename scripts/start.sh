@@ -1,12 +1,13 @@
 #!/bin/bash
 # Railway startup script
-# Initializes the database on first deploy, then launches Streamlit
+# Ensures the database directory exists, then launches Streamlit
 
-if [ ! -f "$DB_PATH" ]; then
-    echo "Database not found at $DB_PATH — running first-time setup..."
-    python scripts/init_db.py
-    python scripts/backfill_history.py
-    python scripts/daily_update.py --force
-fi
+# Create the directory for the database if it doesn't exist
+DB_DIR=$(dirname "$DB_PATH")
+mkdir -p "$DB_DIR"
+
+echo "DB_PATH=$DB_PATH"
+echo "DB directory: $DB_DIR"
+ls -la "$DB_DIR" 2>/dev/null
 
 streamlit run app/main.py
