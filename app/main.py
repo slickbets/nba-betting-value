@@ -167,7 +167,6 @@ def main():
     1. **Calculating Elo ratings** for all NBA teams based on historical performance
     2. **Predicting win probabilities** for upcoming games
     3. **Comparing to sportsbook odds** to find edges
-    4. **Tracking your bets** to measure performance over time
 
     Use the navigation in the sidebar to explore different features.
     """)
