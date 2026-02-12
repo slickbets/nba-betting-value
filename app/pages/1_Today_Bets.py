@@ -4,6 +4,7 @@ import streamlit as st
 from datetime import datetime
 import pandas as pd
 import re
+import time
 
 import sys
 from pathlib import Path
@@ -605,12 +606,21 @@ for pred in predictions:
 st.markdown("---")
 if st.button("🔄 Refresh Data"):
     with st.spinner("Fetching latest game data from NBA..."):
-        # Fetch fresh game data from NBA API
-        fresh_games = fetch_games_by_date(date_str)
-        if not fresh_games.empty:
-            processed = process_scoreboard_for_db(fresh_games, CURRENT_SEASON)
-            for game in processed:
-                upsert_game(**game)
-    st.cache_data.clear()
-    clear_injuries_cache()
-    st.rerun()
+        try:
+            # Fetch fresh game data from NBA API
+            fresh_games = fetch_games_by_date(date_str)
+            if fresh_games.empty:
+                st.warning("⚠️ NBA API returned no data. This can happen due to rate limiting or the API blocking cloud servers. Try again in a few seconds.")
+            else:
+                processed = process_scoreboard_for_db(fresh_games, CURRENT_SEASON)
+                updated_count = 0
+                for game in processed:
+                    upsert_game(**game)
+                    updated_count += 1
+                st.success(f"✅ Updated {updated_count} games from NBA API")
+                st.cache_data.clear()
+                clear_injuries_cache()
+                time.sleep(1)  # Let user see the message
+                st.rerun()
+        except Exception as e:
+            st.error(f"❌ Error fetching data: {e}")
