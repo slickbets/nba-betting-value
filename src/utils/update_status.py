@@ -6,7 +6,7 @@ from datetime import datetime
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from config import DATA_DIR
+from config import DATA_DIR, now_ct
 
 LAST_RUN_FILE = DATA_DIR / ".last_daily_update"
 
@@ -36,7 +36,7 @@ def get_last_run_info() -> dict:
             # Old format: "2025-01-25" (no time)
             last_run_dt = datetime.strptime(last_run, "%Y-%m-%d")
 
-        ran_today = last_run_dt.date() == datetime.now().date()
+        ran_today = last_run_dt.date() == now_ct().date()
 
         return {
             'ran_today': ran_today,
