@@ -125,7 +125,8 @@ def main():
         correct_picks = int(accuracy_df['correct'].iloc[0])
         accuracy_pct = (correct_picks / total_games * 100) if total_games > 0 else 0
 
-    except Exception:
+    except Exception as e:
+        print(f"Error loading stats: {e}")
         today_count = 0
         total_games = 0
         correct_picks = 0

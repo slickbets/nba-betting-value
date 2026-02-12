@@ -249,7 +249,7 @@ def calculate_expected_score(offense_elo: float, defense_elo: float,
 
 def od_elo_to_spread(home_offense_elo: float, home_defense_elo: float,
                      away_offense_elo: float, away_defense_elo: float,
-                     home_advantage_points: float = 2.7) -> float:
+                     home_advantage_points: float = ELO_HOME_ADVANTAGE / ELO_SPREAD_DIVISOR) -> float:
     """
     Convert O/D Elo to predicted spread.
 
@@ -258,7 +258,7 @@ def od_elo_to_spread(home_offense_elo: float, home_defense_elo: float,
         home_defense_elo: Home team's defensive Elo
         away_offense_elo: Away team's offensive Elo
         away_defense_elo: Away team's defensive Elo
-        home_advantage_points: Home court advantage in points (default 2.7)
+        home_advantage_points: Home court advantage in points (default from config)
 
     Returns:
         Predicted spread (positive = home favored)
@@ -271,7 +271,7 @@ def od_elo_to_spread(home_offense_elo: float, home_defense_elo: float,
 
 def od_elo_to_total(home_offense_elo: float, home_defense_elo: float,
                     away_offense_elo: float, away_defense_elo: float,
-                    home_advantage_points: float = 2.7) -> float:
+                    home_advantage_points: float = ELO_HOME_ADVANTAGE / ELO_SPREAD_DIVISOR) -> float:
     """
     Calculate predicted total points from O/D Elo.
 
@@ -280,7 +280,7 @@ def od_elo_to_total(home_offense_elo: float, home_defense_elo: float,
         home_defense_elo: Home team's defensive Elo
         away_offense_elo: Away team's offensive Elo
         away_defense_elo: Away team's defensive Elo
-        home_advantage_points: Home court advantage in points (default 2.7)
+        home_advantage_points: Home court advantage in points (default from config)
 
     Returns:
         Predicted total points
@@ -320,7 +320,7 @@ def update_od_elo(home_offense_elo: float, home_defense_elo: float,
                   away_offense_elo: float, away_defense_elo: float,
                   home_score: int, away_score: int,
                   k_factor: float = ELO_K_FACTOR,
-                  home_advantage_points: float = 2.7) -> ODEloResult:
+                  home_advantage_points: float = ELO_HOME_ADVANTAGE / ELO_SPREAD_DIVISOR) -> ODEloResult:
     """
     Update Offensive/Defensive Elo ratings after a game.
 
@@ -335,7 +335,7 @@ def update_od_elo(home_offense_elo: float, home_defense_elo: float,
         home_score: Home team's final score
         away_score: Away team's final score
         k_factor: Base Elo K-factor
-        home_advantage_points: Home court advantage in points (default 2.7)
+        home_advantage_points: Home court advantage in points (default from config)
 
     Returns:
         ODEloResult with updated ratings

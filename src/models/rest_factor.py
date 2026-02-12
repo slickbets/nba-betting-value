@@ -107,12 +107,12 @@ def get_rest_adjustments_for_game(
     if home_last_game:
         home_rest_days = calculate_rest_days(home_last_game, game_date)
     else:
-        home_rest_days = 3  # Season opener or no data - assume well rested
+        home_rest_days = 1  # Season opener or no data - assume normal rest (0 adjustment)
 
     if away_last_game:
         away_rest_days = calculate_rest_days(away_last_game, game_date)
     else:
-        away_rest_days = 3
+        away_rest_days = 1  # Season opener or no data - assume normal rest (0 adjustment)
 
     # Get Elo adjustments
     home_rest_adj = get_rest_adjustment(home_rest_days)

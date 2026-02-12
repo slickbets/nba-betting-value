@@ -560,9 +560,9 @@ def reset_all_elos():
     """Reset all team Elos to initial rating."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(f"UPDATE teams SET current_elo = {ELO_INITIAL_RATING}")
-        cursor.execute(f"UPDATE teams SET offense_elo = {ELO_INITIAL_RATING}")
-        cursor.execute(f"UPDATE teams SET defense_elo = {ELO_INITIAL_RATING}")
+        cursor.execute("UPDATE teams SET current_elo = ?", (ELO_INITIAL_RATING,))
+        cursor.execute("UPDATE teams SET offense_elo = ?", (ELO_INITIAL_RATING,))
+        cursor.execute("UPDATE teams SET defense_elo = ?", (ELO_INITIAL_RATING,))
         cursor.execute("DELETE FROM elo_history")
         conn.commit()
 
@@ -695,3 +695,44 @@ def clear_player_impacts():
         cursor = conn.cursor()
         cursor.execute("DELETE FROM player_impact")
         conn.commit()
+
+
+def clear_old_player_impacts(current_season: str) -> int:
+    """Remove player impact entries from previous seasons.
+
+    Args:
+        current_season: The current season string (e.g., "2025-26")
+
+    Returns:
+        Number of rows deleted
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM player_impact WHERE season != ?", (current_season,))
+        deleted = cursor.rowcount
+        conn.commit()
+        return deleted
+
+
+def get_league_avg_score(season: str) -> Optional[float]:
+    """Calculate the actual league average score from completed games.
+
+    Args:
+        season: Season string (e.g., "2025-26")
+
+    Returns:
+        Average points per team per game, or None if no data
+    """
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT AVG(score) FROM (
+                SELECT home_score AS score FROM games
+                WHERE season = ? AND status = 'final' AND home_score IS NOT NULL
+                UNION ALL
+                SELECT away_score AS score FROM games
+                WHERE season = ? AND status = 'final' AND away_score IS NOT NULL
+            )
+        """, (season, season))
+        result = cursor.fetchone()
+        return result[0] if result and result[0] is not None else None

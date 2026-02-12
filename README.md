@@ -180,7 +180,7 @@ pytest tests/ -v
 - The Odds API free tier has limited requests (500/month)
 - Player impact data depends on NBA API availability (players with 0 GP not tracked)
 - NBA API (`stats.nba.com`) is blocked on cloud servers; ESPN fallback handles live game status updates
-- Cloud servers use UTC; app uses Central Time via `now_ct()` helper for correct date defaults
+- Cloud servers use UTC; app uses Central Time (DST-aware) via `now_ct()` helper for correct date defaults
 
 ## Roadmap
 
@@ -198,6 +198,10 @@ pytest tests/ -v
 - [x] **K-factor decay** - Higher K early season for faster calibration
 - [x] **Model accuracy tracking** - Pick accuracy, spread error, confidence analysis
 - [x] **ESPN scoreboard fallback** - Refresh button works on cloud deployments where NBA API is blocked
+- [x] **O/D Elo home advantage fix** - Was double the correct value; now derived from config
+- [x] **DST-aware timezone** - Correct Central Time during daylight saving
+- [x] **Structured logging** - All print() calls converted to Python logging module
+- [x] **League avg score monitoring** - Daily update warns if actual PPG drifts from config
 
 ### Up Next
 - [ ] **Spread/total value betting** - Find value on spreads and totals (not just moneyline)

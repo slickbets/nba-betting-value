@@ -5,10 +5,13 @@ impact rating (NET_RATING * playing_time_factor). Data comes from the
 player_impact database table, auto-populated from NBA API.
 """
 
+import logging
 import sys
 from pathlib import Path
 from typing import Optional
 from difflib import SequenceMatcher
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 
@@ -101,7 +104,8 @@ def get_player_elo_impact(player_name: str, team_abbr: Optional[str] = None) -> 
         # (team is worse with them on court), losing them shouldn't penalize the team
         return max(impact, 0.0)
 
-    except Exception:
+    except Exception as e:
+        logger.error("Error getting player impact for %s: %s", player_name, e)
         return 0.0
 
 

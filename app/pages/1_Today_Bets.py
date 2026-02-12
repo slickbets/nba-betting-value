@@ -618,8 +618,8 @@ if st.button("🔄 Refresh Data"):
                     upsert_game(**game)
                     updated_count += 1
                 source = "NBA API"
-        except Exception:
-            pass  # Fall through to ESPN fallback
+        except Exception as e:
+            print(f"NBA API error: {e}")  # Fall through to ESPN fallback
 
         # Fallback to ESPN if NBA API returned nothing
         if updated_count == 0:

@@ -14,8 +14,14 @@ from src.models.elo import (
     update_elo_with_mov,
     season_regression,
     win_prob_to_american_odds,
+    calculate_expected_score,
+    od_elo_to_spread,
+    od_elo_to_total,
+    od_elo_to_win_prob,
+    update_od_elo,
+    season_regression_od,
 )
-from config import ELO_INITIAL_RATING, ELO_HOME_ADVANTAGE
+from config import ELO_INITIAL_RATING, ELO_HOME_ADVANTAGE, ELO_SPREAD_DIVISOR, LEAGUE_AVG_SCORE
 
 
 class TestWinProbability:
@@ -176,6 +182,69 @@ class TestOddsConversion:
         """Probability < 50% should give positive odds."""
         odds = win_prob_to_american_odds(0.3)
         assert odds > 0
+
+
+class TestODElo:
+    """Tests for Offensive/Defensive Elo system."""
+
+    def test_expected_score_equal_elo_gives_league_avg(self):
+        """Equal O/D Elo should give league average score."""
+        score = calculate_expected_score(1500, 1500, home_advantage_points=0)
+        assert abs(score - LEAGUE_AVG_SCORE) < 0.001
+
+    def test_expected_score_home_advantage_adds_points(self):
+        """Home advantage should add to expected score."""
+        neutral = calculate_expected_score(1500, 1500, home_advantage_points=0)
+        home = calculate_expected_score(1500, 1500, home_advantage_points=1.4)
+        assert home > neutral
+        assert abs(home - neutral - 1.4) < 0.001
+
+    def test_spread_zero_when_equal(self):
+        """Equal O/D Elo should give spread of 0 (no home advantage)."""
+        spread = od_elo_to_spread(1500, 1500, 1500, 1500, home_advantage_points=0)
+        assert abs(spread) < 0.001
+
+    def test_spread_with_home_advantage(self):
+        """Equal teams should show home advantage in spread."""
+        spread = od_elo_to_spread(1500, 1500, 1500, 1500)
+        expected_ha = ELO_HOME_ADVANTAGE / ELO_SPREAD_DIVISOR
+        assert abs(spread - expected_ha) < 0.001
+
+    def test_total_equal_elo_gives_double_league_avg(self):
+        """Equal O/D Elo should give total near 2x league average."""
+        total = od_elo_to_total(1500, 1500, 1500, 1500, home_advantage_points=0)
+        assert abs(total - 2 * LEAGUE_AVG_SCORE) < 0.001
+
+    def test_od_elo_update_correct_direction(self):
+        """O/D Elo updates should move in correct direction after game."""
+        # Home team scores more than expected -> offense should improve
+        result = update_od_elo(1500, 1500, 1500, 1500, 130, 100)
+        assert result.home_offense_change > 0  # Scored more than expected
+        assert result.home_defense_change > 0  # Held opponent below expected
+        assert result.away_offense_change < 0  # Scored less than expected
+        assert result.away_defense_change < 0  # Allowed more than expected
+
+    def test_win_prob_equal_elo_gives_50_percent(self):
+        """Equal O/D Elo with no home advantage should give 50% each."""
+        home_prob, away_prob = od_elo_to_win_prob(1500, 1500, 1500, 1500, home_advantage=0)
+        assert abs(home_prob - 0.5) < 0.001
+        assert abs(away_prob - 0.5) < 0.001
+
+    def test_season_regression_od_toward_1500(self):
+        """Season regression should move O/D Elo toward 1500."""
+        new_o, new_d = season_regression_od(1600, 1400)
+        assert 1500 < new_o < 1600  # Regressed toward mean
+        assert 1400 < new_d < 1500  # Regressed toward mean
+
+    def test_home_advantage_default_matches_config(self):
+        """Default home advantage should match config (catches Fix #1 regression)."""
+        # With equal Elo, spread should be exactly ELO_HOME_ADVANTAGE / ELO_SPREAD_DIVISOR
+        spread = od_elo_to_spread(1500, 1500, 1500, 1500)
+        expected = ELO_HOME_ADVANTAGE / ELO_SPREAD_DIVISOR
+        assert abs(spread - expected) < 0.001, (
+            f"Default home advantage {spread:.2f} doesn't match config "
+            f"({ELO_HOME_ADVANTAGE}/{ELO_SPREAD_DIVISOR}={expected:.2f})"
+        )
 
 
 if __name__ == "__main__":

@@ -96,12 +96,61 @@ launchctl list | grep nba-betting
 
 ## Recent Changes (February 2026)
 
+**Codebase Quality Fixes (10 issues):**
+
+1. **O/D Elo home advantage bug fix (prediction-affecting):**
+   - `od_elo_to_spread()`, `od_elo_to_total()`, `update_od_elo()` had hardcoded `2.7` point home advantage
+   - Config says 35 Elo / 25 = **1.4 points** — predictions were nearly double the correct value
+   - Fixed: defaults now use `ELO_HOME_ADVANTAGE / ELO_SPREAD_DIVISOR` from config
+   - File: `src/models/elo.py`
+
+2. **DST-aware timezone:**
+   - `config.py` hardcoded UTC-6 (CST) but Central Time is UTC-5 during daylight saving (March-November)
+   - Fixed: now uses `zoneinfo.ZoneInfo("America/Chicago")` (stdlib in Python 3.9+)
+   - File: `config.py`
+
+3. **SQL parameterization in `reset_all_elos()`:**
+   - Was using f-strings for SQL; now uses `?` parameterized queries
+   - File: `src/data/database.py`
+
+4. **`datetime.now()` → `now_ct()` in scripts:**
+   - Replaced 9 `datetime.now()` calls in `scripts/daily_update.py` and 2 in `src/data/nba_fetcher.py`
+   - Ensures correct date on cloud servers (Railway returns UTC)
+
+5. **Clear stale player impact data on season change:**
+   - Added `clear_old_player_impacts(season)` to `src/data/database.py`
+   - Called at start of `update_player_impact()` to remove previous-season entries before upserting
+
+6. **Rest days season opener default changed from 3 → 1:**
+   - Teams with no prior game data (season openers) were getting +8 Elo rest bonus
+   - Now defaults to 1 rest day (0 adjustment) — conservative and correct
+   - File: `src/models/rest_factor.py`
+
+7. **Added logging to bare except blocks:**
+   - 3 silent `except Exception` blocks now log the error
+   - Files: `app/main.py`, `app/pages/1_Today_Bets.py`, `src/models/player_impact.py`
+
+8. **O/D Elo test coverage:**
+   - Added `TestODElo` class with 9 tests to `tests/test_elo.py`
+   - Tests: expected score, spread, total, win prob, O/D Elo updates, season regression, config regression guard
+
+9. **Structured logging (print → logging):**
+   - Added `import logging` + `logger = logging.getLogger(__name__)` to 6 files
+   - `scripts/daily_update.py` configures `logging.basicConfig()` when run as main
+   - All `print()` calls converted to `logger.info/warning/error()`
+   - Files: `scripts/daily_update.py`, `src/data/nba_fetcher.py`, `src/data/odds_fetcher.py`, `src/data/injury_fetcher.py`, `src/models/predictor.py`, `src/models/player_impact.py`
+
+10. **Auto-calculate LEAGUE_AVG_SCORE from database:**
+    - Added `get_league_avg_score(season)` to `src/data/database.py`
+    - `check_league_avg_score()` runs at end of daily update, logs warning if actual avg differs from config by >1 point
+    - Config constant kept as default/fallback
+
 **Central Time Fix for Cloud Deployment:**
 - `datetime.now()` returns UTC on Railway, causing the app to default to the wrong date after 6 PM CT
-- Added `now_ct()` helper in `config.py` that returns current time in Central Time (UTC-6)
-- All `datetime.now()` calls in app pages replaced with `now_ct()`
-- Affects: Today's Bets date picker, main page date display, Model Accuracy date ranges
-- Files: `config.py`, `app/main.py`, `app/pages/1_Today_Bets.py`, `app/pages/5_Model_Accuracy.py`
+- Added `now_ct()` helper in `config.py` that returns current time in Central Time
+- All `datetime.now()` calls in app pages and scripts replaced with `now_ct()`
+- Affects: Today's Bets date picker, main page date display, Model Accuracy date ranges, daily_update.py
+- Files: `config.py`, `app/main.py`, `app/pages/1_Today_Bets.py`, `app/pages/5_Model_Accuracy.py`, `scripts/daily_update.py`, `src/data/nba_fetcher.py`
 
 **Main Page Dashboard Metrics:**
 - Replaced hardcoded placeholder dashes with live data from database
@@ -378,6 +427,12 @@ Negative values clamped to 0
 2. **Historical backtesting** - Validate O/D Elo and player impact accuracy on past seasons
 
 ### Recently Completed
+- ✅ **O/D Elo home advantage fix** - Was double the correct value (2.7 vs 1.4 points); now derived from config
+- ✅ **DST-aware timezone** - Uses `zoneinfo.ZoneInfo("America/Chicago")` instead of hardcoded UTC-6
+- ✅ **Structured logging** - All `print()` calls converted to `logging` module in scripts and src
+- ✅ **O/D Elo test coverage** - 9 new tests covering all O/D Elo functions
+- ✅ **League avg score check** - Daily update warns if actual PPG drifts from config constant
+- ✅ **Stale player impact cleanup** - Previous-season entries cleared on daily update
 - ✅ **ESPN scoreboard fallback** - Refresh button works on cloud deployments (Railway) where NBA API is blocked
 - ✅ **Player impact USG% weighting** - Reduces team-context bias (Caruso 19→8, SGA stays 27)
 - ✅ **Negative impact clamping** - Bad players no longer penalize team when injured

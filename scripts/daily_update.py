@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Daily update script - refresh games, settle bets, update Elo."""
 
+import logging
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import DATA_DIR
+from config import DATA_DIR, now_ct
+
+logger = logging.getLogger(__name__)
 
 # File to track last run date
 LAST_RUN_FILE = DATA_DIR / ".last_daily_update"
@@ -22,14 +25,14 @@ def already_ran_today() -> bool:
         last_run = LAST_RUN_FILE.read_text().strip()
         # Handle both old format (date only) and new format (datetime)
         last_run_date = last_run[:10]  # Extract just the date part
-        return last_run_date == datetime.now().strftime("%Y-%m-%d")
+        return last_run_date == now_ct().strftime("%Y-%m-%d")
     except Exception:
         return False
 
 
 def mark_as_ran():
     """Mark that we ran today with full timestamp."""
-    LAST_RUN_FILE.write_text(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    LAST_RUN_FILE.write_text(now_ct().strftime("%Y-%m-%d %H:%M:%S"))
 
 
 def get_last_run_info() -> dict:
@@ -57,7 +60,7 @@ def get_last_run_info() -> dict:
             # Old format: "2025-01-25" (no time)
             last_run_dt = datetime.strptime(last_run, "%Y-%m-%d")
 
-        ran_today = last_run_dt.date() == datetime.now().date()
+        ran_today = last_run_dt.date() == now_ct().date()
 
         return {
             'ran_today': ran_today,
@@ -88,6 +91,8 @@ from src.data.database import (
     settle_bet,
     upsert_game,
     upsert_player_impact,
+    clear_old_player_impacts,
+    get_league_avg_score,
 )
 from src.data.nba_fetcher import (
     fetch_season_games,
@@ -102,27 +107,27 @@ from src.data.injury_fetcher import fetch_injuries_for_date
 from src.models.elo import update_elo_with_mov, update_od_elo, calculate_k_with_decay
 from src.models.predictor import predict_games_for_date, clear_injuries_cache
 from src.betting.odds_converter import american_to_decimal
-from config import CURRENT_SEASON, USE_OD_ELO
+from config import CURRENT_SEASON, USE_OD_ELO, LEAGUE_AVG_SCORE
 
 
 def update_game_results():
     """Fetch and update recent game results."""
-    print("\n1. Updating game results...")
+    logger.info("1. Updating game results...")
 
     # Check games from the last 3 days
-    today = datetime.now()
+    today = now_ct()
 
     for days_ago in range(3):
         check_date = today - timedelta(days=days_ago)
         date_str = check_date.strftime("%Y-%m-%d")
 
-        print(f"   Checking {date_str}...")
+        logger.info("Checking %s...", date_str)
 
         # Fetch from NBA API
         games = fetch_games_by_date(date_str)
 
         if games.empty:
-            print(f"   No games found for {date_str}")
+            logger.info("No games found for %s", date_str)
             continue
 
         processed = process_scoreboard_for_db(games, CURRENT_SEASON)
@@ -135,25 +140,25 @@ def update_game_results():
                     home_score=game['home_score'],
                     away_score=game['away_score']
                 )
-                print(f"   Updated: {game['game_id']} ({game['home_score']}-{game['away_score']})")
+                logger.info("Updated: %s (%s-%s)", game['game_id'], game['home_score'], game['away_score'])
 
 
 def update_elo_ratings():
     """Update Elo ratings for newly completed games (including O/D Elo)."""
-    print("\n2. Updating Elo ratings...")
+    logger.info("2. Updating Elo ratings...")
 
     # Get all final games without post-game Elo
     games_df = get_games_by_season(CURRENT_SEASON, status='final')
 
     if games_df.empty:
-        print("   No completed games to process")
+        logger.info("No completed games to process")
         return
 
     # Filter to games without post-game Elo
     games_to_update = games_df[games_df['home_elo_post'].isna()]
 
     if games_to_update.empty:
-        print("   All games already have Elo calculated")
+        logger.info("All games already have Elo calculated")
         return
 
     # Count games already processed this season (for K-decay)
@@ -242,7 +247,7 @@ def update_elo_ratings():
             od_ratings[away_id]['offense'] = od_result.away_offense_elo_new
             od_ratings[away_id]['defense'] = od_result.away_defense_elo_new
 
-        print(f"   Updated Elo for game {game['game_id']}")
+        logger.info("Updated Elo for game %s", game['game_id'])
 
     # Save final ratings
     for team_id, elo in elo_ratings.items():
@@ -253,18 +258,18 @@ def update_elo_ratings():
         for team_id, od in od_ratings.items():
             update_team_od_elo(team_id, od['offense'], od['defense'])
 
-    print(f"   Processed {len(games_to_update)} games")
+    logger.info("Processed %d games", len(games_to_update))
 
 
 def fetch_todays_games():
     """Fetch today's scheduled games."""
-    print("\n3. Fetching today's games...")
+    logger.info("3. Fetching today's games...")
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = now_ct().strftime("%Y-%m-%d")
     games = fetch_games_by_date(today)
 
     if games.empty:
-        print("   No games scheduled today")
+        logger.info("No games scheduled today")
         return
 
     processed = process_scoreboard_for_db(games, CURRENT_SEASON)
@@ -272,14 +277,14 @@ def fetch_todays_games():
     for game in processed:
         upsert_game(**game)
 
-    print(f"   Loaded {len(processed)} games for today")
+    logger.info("Loaded %d games for today", len(processed))
 
 
 def fetch_injuries():
     """Fetch injury reports for today's games from ESPN."""
-    print("\n4. Fetching injury reports...")
+    logger.info("4. Fetching injury reports...")
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = now_ct().strftime("%Y-%m-%d")
 
     # Clear cache to ensure fresh data
     clear_injuries_cache()
@@ -288,13 +293,13 @@ def fetch_injuries():
         injuries_df = fetch_injuries_for_date(today)
 
         if injuries_df.empty:
-            print("   No injury reports available for today")
+            logger.info("No injury reports available for today")
             return
 
         # Count injuries by team
         if "team_abbr" in injuries_df.columns:
             team_counts = injuries_df["team_abbr"].value_counts()
-            print(f"   Fetched {len(injuries_df)} injury reports across {len(team_counts)} teams")
+            logger.info("Fetched %d injury reports across %d teams", len(injuries_df), len(team_counts))
 
             # Show significant injuries (where status is Out or Doubtful)
             if "status" in injuries_df.columns:
@@ -302,33 +307,33 @@ def fetch_injuries():
                     injuries_df["status"].str.lower().str.contains("out|doubtful", na=False)
                 ]
                 if not significant.empty:
-                    print("   Notable injuries:")
+                    logger.info("Notable injuries:")
                     for _, row in significant.head(10).iterrows():
                         player = row.get("player_name", "Unknown")
                         team = row.get("team_abbr", "???")
                         status = row.get("status", "Out")
-                        print(f"     - {player} ({team}): {status}")
+                        logger.info("  - %s (%s): %s", player, team, status)
                     if len(significant) > 10:
-                        print(f"     ... and {len(significant) - 10} more")
+                        logger.info("  ... and %d more", len(significant) - 10)
         else:
-            print(f"   Fetched {len(injuries_df)} injury reports")
+            logger.info("Fetched %d injury reports", len(injuries_df))
 
     except Exception as e:
-        print(f"   Error fetching injuries: {e}")
+        logger.error("Error fetching injuries: %s", e)
 
 
 def generate_predictions():
     """Generate predictions for today's games with injury adjustments."""
-    print("\n5. Generating predictions...")
+    logger.info("5. Generating predictions...")
 
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = now_ct().strftime("%Y-%m-%d")
     predictions = predict_games_for_date(today, save_to_db=True, apply_injuries=True)
 
     if not predictions:
-        print("   No predictions to generate")
+        logger.info("No predictions to generate")
         return
 
-    print(f"   Generated {len(predictions)} predictions")
+    logger.info("Generated %d predictions", len(predictions))
 
     for pred in predictions:
         spread_str = f"{pred.home_team} {pred.predicted_spread:.1f}" if pred.predicted_spread < 0 else f"{pred.away_team} {-pred.predicted_spread:.1f}"
@@ -337,32 +342,32 @@ def generate_predictions():
             total_adj = abs(pred.home_injury_adjustment) + abs(pred.away_injury_adjustment)
             if total_adj >= 20:
                 injury_note = f" [Inj: {pred.home_team} {pred.home_injury_adjustment:+.0f}, {pred.away_team} {pred.away_injury_adjustment:+.0f}]"
-        print(f"   {pred.away_team} @ {pred.home_team}: {pred.home_team} {pred.home_win_prob:.1%} | Spread: {spread_str}{injury_note}")
+        logger.info("%s @ %s: %s %.1f%% | Spread: %s%s", pred.away_team, pred.home_team, pred.home_team, pred.home_win_prob * 100, spread_str, injury_note)
 
 
 def fetch_odds():
     """Fetch current odds for today's games."""
-    print("\n6. Fetching current odds...")
+    logger.info("6. Fetching current odds...")
 
     try:
         odds_df = get_current_odds()
         if odds_df.empty:
-            print("   No odds available (check API key)")
+            logger.warning("No odds available (check API key)")
         else:
-            print(f"   Fetched odds for {len(odds_df)} game/book combinations")
+            logger.info("Fetched odds for %d game/book combinations", len(odds_df))
     except Exception as e:
-        print(f"   Error fetching odds: {e}")
+        logger.error("Error fetching odds: %s", e)
 
 
 def seed_od_elo_from_api():
     """Seed initial O/D Elo values from NBA API team ratings."""
-    print("\n   Seeding O/D Elo from NBA API...")
+    logger.info("Seeding O/D Elo from NBA API...")
 
     try:
         od_df = fetch_team_offensive_defensive_ratings(CURRENT_SEASON)
 
         if od_df.empty:
-            print("   Could not fetch team ratings from API")
+            logger.warning("Could not fetch team ratings from API")
             return False
 
         # Get existing teams from database
@@ -376,25 +381,30 @@ def seed_od_elo_from_api():
                 team_id = team_map[team_abbr]
                 update_team_od_elo(team_id, row['offense_elo'], row['defense_elo'])
                 updated += 1
-                print(f"   {team_abbr}: O-Elo={row['offense_elo']:.0f}, D-Elo={row['defense_elo']:.0f}")
+                logger.info("%s: O-Elo=%.0f, D-Elo=%.0f", team_abbr, row['offense_elo'], row['defense_elo'])
 
-        print(f"   Seeded O/D Elo for {updated} teams")
+        logger.info("Seeded O/D Elo for %d teams", updated)
         return True
 
     except Exception as e:
-        print(f"   Error seeding O/D Elo: {e}")
+        logger.error("Error seeding O/D Elo: %s", e)
         return False
 
 
 def update_player_impact():
     """Update player impact ratings from NBA API."""
-    print("\n7. Updating player impact ratings...")
+    logger.info("7. Updating player impact ratings...")
 
     try:
+        # Clear stale player impact data from previous seasons
+        deleted = clear_old_player_impacts(CURRENT_SEASON)
+        if deleted > 0:
+            logger.info("Cleared %d stale player impact entries from previous seasons", deleted)
+
         impact_df = fetch_player_impact_stats(CURRENT_SEASON)
 
         if impact_df.empty:
-            print("   No player impact data available")
+            logger.warning("No player impact data available")
             return
 
         # Save to database
@@ -413,22 +423,22 @@ def update_player_impact():
 
         # Show top players by impact
         top_players = impact_df.nlargest(5, 'elo_impact')
-        print(f"   Updated {len(impact_df)} players. Top 5 by impact:")
+        logger.info("Updated %d players. Top 5 by impact:", len(impact_df))
         for _, p in top_players.iterrows():
-            print(f"     {p['player_name']} ({p['team_abbr']}): {p['elo_impact']:+.1f} Elo")
+            logger.info("  %s (%s): %+.1f Elo", p['player_name'], p['team_abbr'], p['elo_impact'])
 
     except Exception as e:
-        print(f"   Error updating player impact: {e}")
+        logger.error("Error updating player impact: %s", e)
 
 
 def auto_settle_bets():
     """Auto-settle bets where possible."""
-    print("\n7. Checking for bets to settle...")
+    logger.info("8. Checking for bets to settle...")
 
     unsettled = get_unsettled_bets()
 
     if unsettled.empty:
-        print("   No unsettled bets")
+        logger.info("No unsettled bets")
         return
 
     settled_count = 0
@@ -453,10 +463,10 @@ def auto_settle_bets():
                 profit = -bet['stake']
 
             settle_bet(bet['bet_id'], result, payout, profit)
-            print(f"   Settled bet {bet['bet_id']}: {result} (${profit:+.2f})")
+            logger.info("Settled bet %s: %s ($%+.2f)", bet['bet_id'], result, profit)
             settled_count += 1
 
-    print(f"   Auto-settled {settled_count} bets")
+    logger.info("Auto-settled %d bets", settled_count)
 
 
 def check_and_seed_od_elo():
@@ -474,20 +484,36 @@ def check_and_seed_od_elo():
             break
 
     if needs_seeding and USE_OD_ELO:
-        print("\n   O/D Elo not initialized - seeding from NBA API...")
+        logger.info("O/D Elo not initialized - seeding from NBA API...")
         seed_od_elo_from_api()
+
+
+def check_league_avg_score():
+    """Check if actual league average score differs significantly from config."""
+    actual_avg = get_league_avg_score(CURRENT_SEASON)
+    if actual_avg is not None:
+        diff = abs(actual_avg - LEAGUE_AVG_SCORE)
+        if diff > 1.0:
+            logger.warning(
+                "League avg score from DB (%.1f) differs from config (%.1f) by %.1f points. "
+                "Consider updating LEAGUE_AVG_SCORE in config.py.",
+                actual_avg, LEAGUE_AVG_SCORE, diff,
+            )
+        else:
+            logger.info("League avg score: %.1f (config: %.1f)", actual_avg, LEAGUE_AVG_SCORE)
 
 
 def main(force: bool = False):
     # Check if already ran today (unless --force)
     if not force and already_ran_today():
-        print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Already ran today, skipping. Use --force to override.")
+        logger.info("[%s] Already ran today, skipping. Use --force to override.",
+                     now_ct().strftime('%Y-%m-%d %H:%M:%S'))
         return
 
-    print("=" * 50)
-    print("NBA Betting Value - Daily Update")
-    print(f"Run time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("NBA Betting Value - Daily Update")
+    logger.info("Run time: %s", now_ct().strftime('%Y-%m-%d %H:%M:%S'))
+    logger.info("=" * 50)
 
     # Initialize database
     init_database()
@@ -505,14 +531,21 @@ def main(force: bool = False):
     update_player_impact()
     auto_settle_bets()
 
+    # Check league average score vs config
+    check_league_avg_score()
+
     # Mark as completed
     mark_as_ran()
 
-    print("\n" + "=" * 50)
-    print("Daily update complete!")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("Daily update complete!")
+    logger.info("=" * 50)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s %(message)s',
+    )
     force = "--force" in sys.argv
     main(force=force)

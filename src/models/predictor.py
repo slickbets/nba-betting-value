@@ -1,7 +1,10 @@
 """Game prediction using Elo ratings."""
 
+import logging
 from dataclasses import dataclass, field
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 
@@ -210,7 +213,7 @@ def predict_game(
                 injuries_applied = True
         except Exception as e:
             # Fall back to unadjusted Elo if injury fetch fails
-            print(f"Warning: Could not apply injury adjustments: {e}")
+            logger.warning("Could not apply injury adjustments: %s", e)
 
     # Apply rest day adjustments if requested
     if apply_rest and game_date:
@@ -220,7 +223,7 @@ def predict_game(
             rest_applied = True
         except Exception as e:
             # Fall back to no adjustment if rest calculation fails
-            print(f"Warning: Could not apply rest adjustments: {e}")
+            logger.warning("Could not apply rest adjustments: %s", e)
 
     # Apply all adjustments to composite Elo
     home_elo_adjusted = home_elo_base + home_injury_adj + home_rest_adj

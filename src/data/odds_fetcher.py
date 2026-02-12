@@ -1,8 +1,11 @@
 """Fetch odds from The Odds API."""
 
+import logging
 import requests
 from datetime import datetime, timedelta
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 
@@ -64,7 +67,7 @@ def fetch_nba_odds(markets: list[str] = None) -> Optional[dict]:
         API response dict or None if error
     """
     if not ODDS_API_KEY or ODDS_API_KEY == "your_key_here":
-        print("Warning: ODDS_API_KEY not configured. Set it in .env file.")
+        logger.warning("ODDS_API_KEY not configured. Set it in .env file.")
         return None
 
     if markets is None:
@@ -86,12 +89,12 @@ def fetch_nba_odds(markets: list[str] = None) -> Optional[dict]:
 
         # Check remaining requests
         remaining = response.headers.get("x-requests-remaining", "unknown")
-        print(f"API requests remaining this month: {remaining}")
+        logger.info("API requests remaining this month: %s", remaining)
 
         return response.json()
 
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching odds: {e}")
+        logger.error("Error fetching odds: %s", e)
         return None
 
 

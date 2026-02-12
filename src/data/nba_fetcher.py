@@ -1,8 +1,11 @@
 """NBA data fetcher using nba_api package."""
 
+import logging
 import time
 from datetime import datetime, timedelta
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 import requests
@@ -17,7 +20,7 @@ from nba_api.stats.static import teams as nba_teams
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from config import CURRENT_SEASON
+from config import CURRENT_SEASON, now_ct
 
 
 # ESPN scoreboard API (works from cloud servers unlike stats.nba.com)
@@ -82,7 +85,7 @@ def fetch_season_games(season: str = CURRENT_SEASON,
         return games_df
 
     except Exception as e:
-        print(f"Error fetching season games: {e}")
+        logger.error("Error fetching season games: %s", e)
         return pd.DataFrame()
 
 
@@ -94,7 +97,7 @@ def fetch_todays_games() -> pd.DataFrame:
         DataFrame with today's games
     """
     try:
-        today = datetime.now().strftime("%Y-%m-%d")
+        today = now_ct().strftime("%Y-%m-%d")
         board = scoreboardv2.ScoreboardV2(game_date=today)
         time.sleep(0.6)
 
@@ -103,7 +106,7 @@ def fetch_todays_games() -> pd.DataFrame:
         return games_df
 
     except Exception as e:
-        print(f"Error fetching today's games: {e}")
+        logger.error("Error fetching today's games: %s", e)
         return pd.DataFrame()
 
 
@@ -147,7 +150,7 @@ def fetch_games_by_date(game_date: str) -> pd.DataFrame:
         return games_df
 
     except Exception as e:
-        print(f"Error fetching games for {game_date}: {e}")
+        logger.error("Error fetching games for %s: %s", game_date, e)
         return pd.DataFrame()
 
 
@@ -218,7 +221,7 @@ def process_scoreboard_for_db(scoreboard_df: pd.DataFrame, season: str) -> list[
 
     for _, row in scoreboard_df.iterrows():
         game_id = row['GAME_ID']
-        game_date = row.get('GAME_DATE_EST', datetime.now().strftime('%Y-%m-%d'))
+        game_date = row.get('GAME_DATE_EST', now_ct().strftime('%Y-%m-%d'))
 
         # Parse game date
         if isinstance(game_date, str):
@@ -328,7 +331,7 @@ def fetch_player_impact_stats(season: str = CURRENT_SEASON,
         df = stats.get_data_frames()[0]
 
         if df.empty:
-            print("No player stats returned from API")
+            logger.warning("No player stats returned from API")
             return pd.DataFrame()
 
         # Filter to qualified players
@@ -336,7 +339,7 @@ def fetch_player_impact_stats(season: str = CURRENT_SEASON,
         df = df[df['GP'] >= min_games]
 
         if df.empty:
-            print(f"No players qualify with {min_minutes}+ MPG and {min_games}+ GP")
+            logger.warning("No players qualify with %s+ MPG and %s+ GP", min_minutes, min_games)
             return pd.DataFrame()
 
         # Calculate Elo impact: NET_RATING * (MPG / 48) * (USG% / 0.20) * 1.5
@@ -354,11 +357,11 @@ def fetch_player_impact_stats(season: str = CURRENT_SEASON,
         result.columns = ['player_id', 'player_name', 'team_abbr', 'net_rating',
                          'minutes_per_game', 'games_played', 'usg_pct', 'elo_impact']
 
-        print(f"Fetched impact stats for {len(result)} qualified players")
+        logger.info("Fetched impact stats for %d qualified players", len(result))
         return result
 
     except Exception as e:
-        print(f"Error fetching player impact stats: {e}")
+        logger.error("Error fetching player impact stats: %s", e)
         return pd.DataFrame()
 
 
@@ -386,7 +389,7 @@ def fetch_team_offensive_defensive_ratings(season: str = CURRENT_SEASON) -> pd.D
         df = stats.get_data_frames()[0]
 
         if df.empty:
-            print("No team stats returned from API")
+            logger.warning("No team stats returned from API")
             return pd.DataFrame()
 
         # Build team_id to abbreviation mapping from static data
@@ -411,11 +414,11 @@ def fetch_team_offensive_defensive_ratings(season: str = CURRENT_SEASON) -> pd.D
         result.columns = ['team_id', 'team_abbr', 'off_rating', 'def_rating',
                          'offense_elo', 'defense_elo']
 
-        print(f"Fetched O/D ratings for {len(result)} teams")
+        logger.info("Fetched O/D ratings for %d teams", len(result))
         return result
 
     except Exception as e:
-        print(f"Error fetching team O/D ratings: {e}")
+        logger.error("Error fetching team O/D ratings: %s", e)
         return pd.DataFrame()
 
 
@@ -516,12 +519,12 @@ def fetch_scoreboard_espn(game_date: str) -> list[dict]:
                 "game_time": game_time,
             })
 
-        print(f"ESPN scoreboard: fetched {len(results)} games for {game_date}")
+        logger.info("ESPN scoreboard: fetched %d games for %s", len(results), game_date)
         return results
 
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching ESPN scoreboard: {e}")
+        logger.error("Error fetching ESPN scoreboard: %s", e)
         return []
     except Exception as e:
-        print(f"Error processing ESPN scoreboard: {e}")
+        logger.error("Error processing ESPN scoreboard: %s", e)
         return []

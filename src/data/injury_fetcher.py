@@ -1,7 +1,10 @@
 """Fetch NBA injury data using ESPN's public API."""
 
+import logging
 from datetime import datetime
 from typing import Optional, Union
+
+logger = logging.getLogger(__name__)
 
 import pandas as pd
 import requests
@@ -163,10 +166,10 @@ def fetch_injuries_from_espn() -> pd.DataFrame:
         return pd.DataFrame(records)
 
     except requests.exceptions.RequestException as e:
-        print(f"Error fetching injuries from ESPN: {e}")
+        logger.error("Error fetching injuries from ESPN: %s", e)
         return pd.DataFrame()
     except Exception as e:
-        print(f"Error processing injury data: {e}")
+        logger.error("Error processing injury data: %s", e)
         return pd.DataFrame()
 
 
