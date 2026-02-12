@@ -61,7 +61,7 @@ def convert_et_to_ct(time_str: str) -> str:
 
 from config import MIN_EDGE_PERCENT, ODDS_API_KEY, CURRENT_SEASON
 from src.data.database import get_games_by_date, init_database, upsert_game
-from src.data.nba_fetcher import fetch_games_by_date, process_scoreboard_for_db
+from src.data.nba_fetcher import fetch_games_by_date, process_scoreboard_for_db, fetch_scoreboard_espn
 from src.utils.update_status import get_last_run_info
 from src.data.odds_fetcher import get_current_odds, get_odds_for_game
 from src.models.predictor import predict_game, predictions_to_dataframe, clear_injuries_cache
@@ -605,22 +605,59 @@ for pred in predictions:
 # Refresh button
 st.markdown("---")
 if st.button("🔄 Refresh Data"):
-    with st.spinner("Fetching latest game data from NBA..."):
+    with st.spinner("Fetching latest game data..."):
+        updated_count = 0
+        source = None
+
         try:
-            # Fetch fresh game data from NBA API
+            # Try NBA API first (works locally, may be blocked on cloud servers)
             fresh_games = fetch_games_by_date(date_str)
-            if fresh_games.empty:
-                st.warning("⚠️ NBA API returned no data. This can happen due to rate limiting or the API blocking cloud servers. Try again in a few seconds.")
-            else:
+            if not fresh_games.empty:
                 processed = process_scoreboard_for_db(fresh_games, CURRENT_SEASON)
-                updated_count = 0
                 for game in processed:
                     upsert_game(**game)
                     updated_count += 1
-                st.success(f"✅ Updated {updated_count} games from NBA API")
-                st.cache_data.clear()
-                clear_injuries_cache()
-                time.sleep(1)  # Let user see the message
-                st.rerun()
-        except Exception as e:
-            st.error(f"❌ Error fetching data: {e}")
+                source = "NBA API"
+        except Exception:
+            pass  # Fall through to ESPN fallback
+
+        # Fallback to ESPN if NBA API returned nothing
+        if updated_count == 0:
+            try:
+                espn_games = fetch_scoreboard_espn(date_str)
+                if espn_games:
+                    # Get existing games from DB to match by team abbreviation
+                    existing_games = get_games_by_date(date_str)
+                    if not existing_games.empty:
+                        for espn_game in espn_games:
+                            # Find matching DB game by team abbreviations
+                            match = existing_games[
+                                (existing_games['home_abbr'] == espn_game['home_abbr']) &
+                                (existing_games['away_abbr'] == espn_game['away_abbr'])
+                            ]
+                            if not match.empty:
+                                game_row = match.iloc[0]
+                                upsert_game(
+                                    game_id=game_row['game_id'],
+                                    season=game_row['season'],
+                                    game_date=date_str,
+                                    game_time=espn_game.get('game_time'),
+                                    home_team_id=int(game_row['home_team_id']),
+                                    away_team_id=int(game_row['away_team_id']),
+                                    home_score=espn_game['home_score'],
+                                    away_score=espn_game['away_score'],
+                                    status=espn_game['status'],
+                                )
+                                updated_count += 1
+                    source = "ESPN"
+                else:
+                    st.warning("⚠️ Could not fetch game data from either NBA API or ESPN.")
+            except Exception as e:
+                st.error(f"❌ Error fetching data: {e}")
+
+        if updated_count > 0:
+            st.success(f"✅ Updated {updated_count} games from {source}")
+            st.cache_data.clear()
+            clear_injuries_cache()
+            time.sleep(1)  # Let user see the message
+            st.rerun()

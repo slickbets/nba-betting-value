@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import pandas as pd
+import requests
 from nba_api.stats.endpoints import (
     leaguegamefinder,
     scoreboardv2,
@@ -17,6 +18,20 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from config import CURRENT_SEASON
+
+
+# ESPN scoreboard API (works from cloud servers unlike stats.nba.com)
+ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
+
+# Map ESPN abbreviations to standard NBA abbreviations (for any known differences)
+ESPN_ABBR_MAP = {
+    "GS": "GSW",
+    "SA": "SAS",
+    "NY": "NYK",
+    "NO": "NOP",
+    "UTAH": "UTA",
+    "WSH": "WAS",
+}
 
 
 # NBA team ID to abbreviation mapping (nba_api uses different IDs)
@@ -402,3 +417,111 @@ def fetch_team_offensive_defensive_ratings(season: str = CURRENT_SEASON) -> pd.D
     except Exception as e:
         print(f"Error fetching team O/D ratings: {e}")
         return pd.DataFrame()
+
+
+def _normalize_espn_abbr(abbr: str) -> str:
+    """Convert ESPN team abbreviation to standard NBA abbreviation."""
+    return ESPN_ABBR_MAP.get(abbr, abbr)
+
+
+def fetch_scoreboard_espn(game_date: str) -> list[dict]:
+    """
+    Fetch game scoreboard data from ESPN's public API.
+
+    This is a fallback for when nba_api's ScoreboardV2 fails (e.g., on cloud servers
+    where stats.nba.com blocks datacenter IPs).
+
+    Args:
+        game_date: Date string in YYYY-MM-DD format
+
+    Returns:
+        List of dicts with keys: home_abbr, away_abbr, home_score, away_score,
+        status, game_time
+    """
+    try:
+        # ESPN uses YYYYMMDD format for date parameter
+        date_param = game_date.replace("-", "")
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        }
+
+        response = requests.get(
+            ESPN_SCOREBOARD_URL,
+            params={"dates": date_param},
+            headers=headers,
+            timeout=30,
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        events = data.get("events", [])
+
+        if not events:
+            return []
+
+        results = []
+        for event in events:
+            competitions = event.get("competitions", [])
+            if not competitions:
+                continue
+
+            comp = competitions[0]
+
+            # Parse status
+            status_info = comp.get("status", {}).get("type", {})
+            state = status_info.get("state", "pre")
+            if state == "post":
+                status = "final"
+            elif state == "in":
+                status = "in_progress"
+            else:
+                status = "scheduled"
+
+            # Parse teams and scores
+            home_abbr = None
+            away_abbr = None
+            home_score = None
+            away_score = None
+
+            for competitor in comp.get("competitors", []):
+                team_data = competitor.get("team", {})
+                abbr = _normalize_espn_abbr(team_data.get("abbreviation", ""))
+                score_str = competitor.get("score")
+                score = int(score_str) if score_str and score_str.isdigit() else None
+
+                if competitor.get("homeAway") == "home":
+                    home_abbr = abbr
+                    home_score = score if status != "scheduled" else None
+                else:
+                    away_abbr = abbr
+                    away_score = score if status != "scheduled" else None
+
+            if not home_abbr or not away_abbr:
+                continue
+
+            # Parse game time from status description for scheduled games
+            game_time = None
+            if status == "scheduled":
+                status_detail = comp.get("status", {}).get("type", {}).get("detail", "")
+                if "ET" in status_detail:
+                    game_time = status_detail.strip()
+
+            results.append({
+                "home_abbr": home_abbr,
+                "away_abbr": away_abbr,
+                "home_score": home_score,
+                "away_score": away_score,
+                "status": status,
+                "game_time": game_time,
+            })
+
+        print(f"ESPN scoreboard: fetched {len(results)} games for {game_date}")
+        return results
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching ESPN scoreboard: {e}")
+        return []
+    except Exception as e:
+        print(f"Error processing ESPN scoreboard: {e}")
+        return []
