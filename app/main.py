@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import CURRENT_SEASON
+from src.data.database import init_database, get_connection, get_games_by_date
 
 # Page configuration
 st.set_page_config(
@@ -61,9 +62,8 @@ def main():
         st.markdown("### Navigation")
         st.markdown("""
         - **Today's Bets** - Find value bets for today's games
-        - **Bet Log** - Track your bets and results
-        - **Performance** - View historical performance
         - **Team Ratings** - Current Elo rankings
+        - **Model Accuracy** - Track prediction performance
         """)
 
         st.markdown("---")
@@ -94,35 +94,65 @@ def main():
         unsafe_allow_html=True
     )
 
+    # Load real stats
+    try:
+        init_database()
+
+        # Today's games count
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_games = get_games_by_date(today_str)
+        today_count = len(today_games) if not today_games.empty else 0
+
+        # Season model accuracy
+        with get_connection() as conn:
+            import pandas as pd
+            accuracy_df = pd.read_sql_query("""
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE
+                        WHEN (predicted_home_win_prob > 0.5 AND home_score > away_score)
+                          OR (predicted_home_win_prob < 0.5 AND away_score > home_score)
+                        THEN 1 ELSE 0
+                    END) as correct
+                FROM games
+                WHERE status = 'final'
+                AND home_score IS NOT NULL
+                AND away_score IS NOT NULL
+                AND predicted_home_win_prob IS NOT NULL
+            """, conn)
+
+        total_games = int(accuracy_df['total'].iloc[0])
+        correct_picks = int(accuracy_df['correct'].iloc[0])
+        accuracy_pct = (correct_picks / total_games * 100) if total_games > 0 else 0
+
+    except Exception:
+        today_count = 0
+        total_games = 0
+        correct_picks = 0
+        accuracy_pct = 0
+
     # Quick stats row
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
         st.metric(
             label="Today's Games",
-            value="--",
+            value=today_count,
             help="Number of games scheduled today"
         )
 
     with col2:
         st.metric(
-            label="Value Bets Found",
-            value="--",
-            help="Bets with edge above threshold"
+            label="Model Accuracy",
+            value=f"{accuracy_pct:.1f}%" if total_games > 0 else "--",
+            help="Percentage of correct winner predictions this season"
         )
 
     with col3:
         st.metric(
-            label="Season Record",
-            value="--",
-            help="Win-Loss record on value bets"
-        )
-
-    with col4:
-        st.metric(
-            label="Season ROI",
-            value="--",
-            help="Return on investment this season"
+            label="Correct Picks",
+            value=f"{correct_picks}/{total_games}" if total_games > 0 else "--",
+            help="Total correct picks out of games with predictions"
         )
 
     st.markdown("---")
@@ -205,8 +235,8 @@ def main():
         ```
 
         **Home Court Advantage:**
-        We add **67.5 Elo points** to the home team to account for home court advantage
-        (roughly equivalent to a 2.7 point spread, reflecting modern NBA trends).
+        We add **35 Elo points** to the home team to account for home court advantage
+        (roughly equivalent to a 1.4 point spread, based on 2025-26 season data).
 
         **Converting to Spread:**
         We estimate point spread as: `Elo Difference / 25`

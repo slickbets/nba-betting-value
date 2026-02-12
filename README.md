@@ -58,12 +58,11 @@ Open http://localhost:8501 in your browser.
 ```
 nba-betting-value/
 ├── app/                    # Streamlit UI
-│   ├── main.py            # Main dashboard
+│   ├── main.py            # Main dashboard (games count, model accuracy)
 │   └── pages/             # Multi-page app
-│       ├── 1_Today_Bets.py
-│       ├── 2_Bet_Log.py
-│       ├── 3_Performance.py
-│       └── 4_Team_Ratings.py
+│       ├── 1_Today_Bets.py    # Value bets & model picks
+│       ├── 4_Team_Ratings.py  # Elo rankings
+│       └── 5_Model_Accuracy.py # Prediction tracking
 │
 ├── src/                    # Core logic
 │   ├── data/              # Data fetching & storage
@@ -189,8 +188,7 @@ pytest tests/ -v
 - [x] Win probability and spread predictions
 - [x] Live odds integration (The Odds API)
 - [x] Value bet detection with Kelly sizing
-- [x] Bet tracking and auto-settlement
-- [x] Streamlit dashboard
+- [x] Streamlit dashboard with live model accuracy metrics
 - [x] **Player injury adjustments** - Adjust Elo based on injured players using auto-calculated impact ratings
 - [x] **Offensive/Defensive Elo** - Separate O-Elo and D-Elo for matchup modeling and predicted totals
 - [x] **Auto player impact** - NBA API-sourced ratings for 300+ players (NET_RATING × MPG × USG%)

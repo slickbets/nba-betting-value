@@ -7,7 +7,12 @@ Finds value bets by comparing Elo-based win probability predictions to sportsboo
 
 ```
 app/                    → Streamlit UI (main.py + pages/)
-src/data/               → Data fetching (NBA API, odds, injuries)
+  pages/1_Today_Bets.py  → Main UI for finding today's value bets
+  pages/4_Team_Ratings.py → Team Elo rankings
+  pages/5_Model_Accuracy.py → Model prediction tracking
+  pages/.2_Bet_Log.py    → (hidden) Bet tracking
+  pages/.3_Performance.py → (hidden) Bet performance
+src/data/               → Data fetching (NBA API, ESPN, odds, injuries)
 src/models/             → Predictions (Elo ratings, player impact, rest factors)
 src/betting/            → Value detection, odds conversion
 src/utils/              → Lightweight utilities (update status)
@@ -90,6 +95,20 @@ launchctl list | grep nba-betting
 ```
 
 ## Recent Changes (February 2026)
+
+**Main Page Dashboard Metrics:**
+- Replaced hardcoded placeholder dashes with live data from database
+- Shows: Today's Games count, Model Accuracy %, Correct Picks (e.g., 79/129)
+- Removed "Value Bets Found" and "Season ROI" metrics (not tracking bets)
+- Changed from 4-column to 3-column layout
+- Fixed outdated home court advantage in Elo explanation (67.5 → 35)
+- Files: `app/main.py`
+
+**Hidden Bet Log and Performance Pages:**
+- Renamed `2_Bet_Log.py` and `3_Performance.py` with dot prefix to hide from Streamlit
+- Focus is on model predictions, not bet tracking
+- Files can be restored by removing the dot prefix
+- Updated sidebar navigation to remove those entries, added Model Accuracy link
 
 **ESPN Scoreboard Fallback for Cloud Deployment:**
 - `stats.nba.com` blocks requests from cloud/datacenter IPs (e.g., Railway)
