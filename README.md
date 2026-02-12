@@ -180,6 +180,7 @@ pytest tests/ -v
 - This is for educational purposes - no guarantee of profit
 - The Odds API free tier has limited requests (500/month)
 - Player impact data depends on NBA API availability (players with 0 GP not tracked)
+- NBA API (`stats.nba.com`) is blocked on cloud servers; ESPN fallback handles live game status updates
 
 ## Roadmap
 
@@ -197,6 +198,7 @@ pytest tests/ -v
 - [x] **Margin-of-victory Elo** - Blowout wins worth more than close games
 - [x] **K-factor decay** - Higher K early season for faster calibration
 - [x] **Model accuracy tracking** - Pick accuracy, spread error, confidence analysis
+- [x] **ESPN scoreboard fallback** - Refresh button works on cloud deployments where NBA API is blocked
 
 ### Up Next
 - [ ] **Spread/total value betting** - Find value on spreads and totals (not just moneyline)

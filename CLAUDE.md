@@ -26,7 +26,7 @@ config.py               → All configuration constants
 | `src/models/rest_factor.py` | Back-to-back and rest day Elo adjustments |
 | `src/data/database.py` | SQLite operations (teams, games, player_impact tables) |
 | `src/data/injury_fetcher.py` | Fetches injuries from ESPN API |
-| `src/data/nba_fetcher.py` | Fetches games/scores/player stats from NBA API |
+| `src/data/nba_fetcher.py` | Fetches games/scores/player stats from NBA API (+ ESPN scoreboard fallback) |
 | `src/data/odds_fetcher.py` | Fetches live odds from The Odds API |
 | `src/betting/value_finder.py` | Identifies value betting opportunities |
 | `app/pages/1_Today_Bets.py` | Main UI for finding today's value bets |
@@ -89,7 +89,17 @@ launchctl load ~/Library/LaunchAgents/com.nba-betting-value.daily-update.plist
 launchctl list | grep nba-betting
 ```
 
-## Recent Changes (Late January 2026)
+## Recent Changes (February 2026)
+
+**ESPN Scoreboard Fallback for Cloud Deployment:**
+- `stats.nba.com` blocks requests from cloud/datacenter IPs (e.g., Railway)
+- Refresh Data button on deployed app now falls back to ESPN's public scoreboard API
+- Flow: Try NBA API first → if empty, fetch from ESPN → match to DB games by team abbreviation → update statuses/scores
+- ESPN endpoint: `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=YYYYMMDD`
+- Includes ESPN-to-NBA abbreviation mapping for known differences (GS→GSW, SA→SAS, NY→NYK, NO→NOP, UTAH→UTA, WSH→WAS)
+- Files: `src/data/nba_fetcher.py` (`fetch_scoreboard_espn()`), `app/pages/1_Today_Bets.py`
+
+## Earlier Changes (Late January 2026)
 
 **Player Impact Formula Overhaul:**
 - Added USG% weighting to reduce team-context bias in NET_RATING
@@ -220,7 +230,7 @@ launchctl list | grep nba-betting
 - File: `app/pages/1_Today_Bets.py`
 
 **Live Refresh for Game Status:**
-- "Refresh Data" button now fetches fresh game data from NBA API
+- "Refresh Data" button fetches fresh game data (NBA API locally, ESPN fallback on cloud)
 - Updates game statuses (scheduled → in_progress → final) in real-time
 - No longer requires running daily_update.py to see status changes
 - File: `app/pages/1_Today_Bets.py`
@@ -342,6 +352,7 @@ Negative values clamped to 0
 2. **Historical backtesting** - Validate O/D Elo and player impact accuracy on past seasons
 
 ### Recently Completed
+- ✅ **ESPN scoreboard fallback** - Refresh button works on cloud deployments (Railway) where NBA API is blocked
 - ✅ **Player impact USG% weighting** - Reduces team-context bias (Caruso 19→8, SGA stays 27)
 - ✅ **Negative impact clamping** - Bad players no longer penalize team when injured
 - ✅ **HCA recalibrated** - Reduced to 35 Elo based on actual 2025-26 data
@@ -375,8 +386,9 @@ Negative values clamped to 0
 
 | Data | Source | Update Frequency |
 |------|--------|------------------|
-| Games & Scores | NBA API (`nba_api` package) | On daily_update.py run |
+| Games & Scores | NBA API (`nba_api` package), ESPN fallback for cloud | On daily_update.py run |
 | Injuries | ESPN public API | On daily_update.py run |
+| Live Game Status | ESPN scoreboard API (fallback when NBA API blocked) | On Refresh Data button |
 | Odds | The Odds API | On page load (costs API credits) |
 | Player Impact | NBA API (`leaguedashplayerstats`) | On daily_update.py run |
 | Team O/D Elo | Calculated from game history | On backfill_od_elo.py run, then daily_update.py |
