@@ -59,7 +59,7 @@ def convert_et_to_ct(time_str: str) -> str:
 
     return f"{display_hour}:{minute} {display_period} CT"
 
-from config import MIN_EDGE_PERCENT, ODDS_API_KEY, CURRENT_SEASON
+from config import MIN_EDGE_PERCENT, ODDS_API_KEY, CURRENT_SEASON, now_ct
 from src.data.database import get_games_by_date, init_database, upsert_game
 from src.data.nba_fetcher import fetch_games_by_date, process_scoreboard_for_db, fetch_scoreboard_espn
 from src.utils.update_status import get_last_run_info
@@ -98,7 +98,7 @@ col1, col2, col3 = st.columns([2, 2, 2])
 with col1:
     selected_date = st.date_input(
         "Select Date",
-        value=datetime.now().date(),
+        value=now_ct().date(),
         help="Choose a date to view games and predictions"
     )
     date_str = selected_date.strftime("%Y-%m-%d")

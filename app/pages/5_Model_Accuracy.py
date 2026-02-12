@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from config import now_ct
 from src.data.database import init_database, get_connection
 
 st.set_page_config(page_title="Model Accuracy", page_icon="🎯", layout="wide")
@@ -121,23 +122,23 @@ with col1:
 
 with col2:
     if preset == "Last 7 days":
-        end_date = datetime.now().date()
+        end_date = now_ct().date()
         start_date = end_date - timedelta(days=7)
     elif preset == "Last 14 days":
-        end_date = datetime.now().date()
+        end_date = now_ct().date()
         start_date = end_date - timedelta(days=14)
     elif preset == "Last 30 days":
-        end_date = datetime.now().date()
+        end_date = now_ct().date()
         start_date = end_date - timedelta(days=30)
     elif preset == "Last 60 days":
-        end_date = datetime.now().date()
+        end_date = now_ct().date()
         start_date = end_date - timedelta(days=60)
     elif preset == "This Season":
-        end_date = datetime.now().date()
+        end_date = now_ct().date()
         start_date = datetime(2025, 10, 1).date()  # Season start
     else:
-        start_date = st.date_input("Start Date", value=datetime.now().date() - timedelta(days=30))
-        end_date = st.date_input("End Date", value=datetime.now().date())
+        start_date = st.date_input("Start Date", value=now_ct().date() - timedelta(days=30))
+        end_date = st.date_input("End Date", value=now_ct().date())
 
 with col3:
     st.markdown(f"**Analyzing:** {start_date.strftime('%b %d, %Y')} to {end_date.strftime('%b %d, %Y')}")

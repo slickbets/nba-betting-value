@@ -180,6 +180,7 @@ pytest tests/ -v
 - The Odds API free tier has limited requests (500/month)
 - Player impact data depends on NBA API availability (players with 0 GP not tracked)
 - NBA API (`stats.nba.com`) is blocked on cloud servers; ESPN fallback handles live game status updates
+- Cloud servers use UTC; app uses Central Time via `now_ct()` helper for correct date defaults
 
 ## Roadmap
 

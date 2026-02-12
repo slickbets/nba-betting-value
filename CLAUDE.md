@@ -18,7 +18,7 @@ src/betting/            → Value detection, odds conversion
 src/utils/              → Lightweight utilities (update status)
 scripts/                → CLI tools (init_db, daily_update, backfill)
 data/                   → SQLite DB
-config.py               → All configuration constants
+config.py               → All configuration constants + now_ct() timezone helper
 ```
 
 ## Key Files
@@ -95,6 +95,13 @@ launchctl list | grep nba-betting
 ```
 
 ## Recent Changes (February 2026)
+
+**Central Time Fix for Cloud Deployment:**
+- `datetime.now()` returns UTC on Railway, causing the app to default to the wrong date after 6 PM CT
+- Added `now_ct()` helper in `config.py` that returns current time in Central Time (UTC-6)
+- All `datetime.now()` calls in app pages replaced with `now_ct()`
+- Affects: Today's Bets date picker, main page date display, Model Accuracy date ranges
+- Files: `config.py`, `app/main.py`, `app/pages/1_Today_Bets.py`, `app/pages/5_Model_Accuracy.py`
 
 **Main Page Dashboard Metrics:**
 - Replaced hardcoded placeholder dashes with live data from database

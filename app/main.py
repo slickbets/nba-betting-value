@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import CURRENT_SEASON
+from config import CURRENT_SEASON, now_ct
 from src.data.database import init_database, get_connection, get_games_by_date
 
 # Page configuration
@@ -56,7 +56,7 @@ def main():
         st.markdown("---")
 
         st.markdown(f"**Season:** {CURRENT_SEASON}")
-        st.markdown(f"**Date:** {datetime.now().strftime('%B %d, %Y')}")
+        st.markdown(f"**Date:** {now_ct().strftime('%B %d, %Y')}")
 
         st.markdown("---")
         st.markdown("### Navigation")
@@ -99,7 +99,7 @@ def main():
         init_database()
 
         # Today's games count
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = now_ct().strftime("%Y-%m-%d")
         today_games = get_games_by_date(today_str)
         today_count = len(today_games) if not today_games.empty else 0
 

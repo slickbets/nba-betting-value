@@ -1,8 +1,17 @@
 """Configuration settings for NBA Betting Value Finder."""
 
 import os
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
+
+# Timezone: Central Time (used for "today" calculations on cloud servers)
+CT_OFFSET = timezone(timedelta(hours=-6))  # CST (UTC-6)
+
+
+def now_ct() -> datetime:
+    """Get current datetime in Central Time. Use this instead of datetime.now() in the app."""
+    return datetime.now(CT_OFFSET)
 
 # Load environment variables
 load_dotenv()
