@@ -27,7 +27,7 @@ ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
 BALLDONTLIE_API_KEY = os.getenv("BALLDONTLIE_API_KEY", "")
 
 # Elo Parameters
-ELO_K_FACTOR = 20.0
+ELO_K_FACTOR = 15.0
 ELO_HOME_ADVANTAGE = 35.0  # ~1.4 points spread (based on 2025-26 actual home margin of +1.36)
 ELO_INITIAL_RATING = 1500.0
 ELO_SPREAD_DIVISOR = 25.0  # Elo diff / this = predicted spread

@@ -31,5 +31,8 @@ Thumbs.db
 # Streamlit
 .streamlit/secrets.toml
 
+# Sweep results
+data/sweep_results/
+
 # Claude Code
 .claude/

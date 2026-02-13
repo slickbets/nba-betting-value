@@ -9,6 +9,9 @@ A Python application that finds value bets by comparing Elo-based predictions to
 - **Live Odds Integration**: Fetch current odds from major sportsbooks via The Odds API
 - **Value Bet Detection**: Identify bets where model probability exceeds implied odds probability
 - **Bet Tracking**: Log bets, track results, and monitor performance over time
+- **Backtesting Engine**: Replay full seasons to measure model accuracy under any parameter set
+- **Parameter Optimization**: Parallel sweep tool finds optimal Elo parameters across the season
+- **Regression Tests**: Automated accuracy thresholds catch model regressions
 - **Interactive Dashboard**: Streamlit UI for exploring predictions and managing bets
 
 ## Quick Start
@@ -71,7 +74,11 @@ nba-betting-value/
 │   │   └── odds_fetcher.py
 │   ├── models/            # Prediction models
 │   │   ├── elo.py
-│   │   └── predictor.py
+│   │   ├── predictor.py
+│   │   └── params.py         # EloParams dataclass (all tunable params)
+│   ├── backtesting/       # Model evaluation
+│   │   ├── engine.py         # Backtest engine (replays season)
+│   │   └── sweep.py          # Parameter grid + parallel sweep
 │   └── betting/           # Betting utilities
 │       ├── odds_converter.py
 │       └── value_finder.py
@@ -79,9 +86,10 @@ nba-betting-value/
 ├── scripts/               # CLI scripts
 │   ├── init_db.py
 │   ├── backfill_history.py
-│   └── daily_update.py
+│   ├── daily_update.py
+│   └── param_sweep.py        # Parameter optimization CLI
 │
-├── tests/                 # Unit tests
+├── tests/                 # Unit tests (141 total)
 ├── data/                  # SQLite database (gitignored)
 ├── config.py              # Configuration
 └── requirements.txt
@@ -157,7 +165,7 @@ Edit `config.py` to adjust:
 
 ```python
 # Elo Parameters
-ELO_K_FACTOR = 20.0           # Rating volatility
+ELO_K_FACTOR = 15.0           # Rating volatility (optimized via parameter sweep)
 ELO_HOME_ADVANTAGE = 35.0     # Home court bonus
 ELO_INITIAL_RATING = 1500.0   # Starting rating
 
@@ -175,7 +183,7 @@ pytest tests/ -v
 
 ## Limitations
 
-- Elo is a simple model - historical accuracy is ~60-65% on straight predictions
+- Elo is a simple model - backtested accuracy is ~63% on straight predictions (838 games, 2025-26)
 - This is for educational purposes - no guarantee of profit
 - The Odds API free tier has limited requests (500/month)
 - Player impact data depends on NBA API availability (players with 0 GP not tracked)
@@ -202,10 +210,12 @@ pytest tests/ -v
 - [x] **DST-aware timezone** - Correct Central Time during daylight saving
 - [x] **Structured logging** - All print() calls converted to Python logging module
 - [x] **League avg score monitoring** - Daily update warns if actual PPG drifts from config
+- [x] **Backtesting engine** - Replay full seasons to measure model accuracy under any parameter set
+- [x] **Parameter sweep optimization** - Found optimal K-factor params, improved accuracy 61.7% → 63.1%
+- [x] **Model regression tests** - Automated thresholds prevent accuracy drops (62% min, 0.23 Brier max)
 
 ### Up Next
 - [ ] **Spread/total value betting** - Find value on spreads and totals (not just moneyline)
-- [ ] **Historical backtesting** - Validate model accuracy on past seasons
 
 ### Future Ideas
 - [ ] Historical injury impact analysis (backtest accuracy)

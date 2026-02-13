@@ -13,11 +13,12 @@ app/                    → Streamlit UI (main.py + pages/)
   pages/.2_Bet_Log.py    → (hidden) Bet tracking
   pages/.3_Performance.py → (hidden) Bet performance
 src/data/               → Data fetching (NBA API, ESPN, odds, injuries)
-src/models/             → Predictions (Elo ratings, player impact, rest factors)
+src/models/             → Predictions (Elo ratings, player impact, rest factors, params)
+src/backtesting/        → Backtest engine, parameter sweep
 src/betting/            → Value detection, odds conversion
 src/utils/              → Lightweight utilities (update status)
-scripts/                → CLI tools (init_db, daily_update, backfill)
-data/                   → SQLite DB
+scripts/                → CLI tools (init_db, daily_update, backfill, param_sweep)
+data/                   → SQLite DB + sweep_results/
 config.py               → All configuration constants + now_ct() timezone helper
 ```
 
@@ -39,6 +40,12 @@ config.py               → All configuration constants + now_ct() timezone help
 | `scripts/daily_update.py` | Daily refresh script (results, Elo, predictions, odds, player impact) |
 | `scripts/backfill_od_elo.py` | Rebuild O/D Elo by replaying all season games |
 | `scripts/run_daily_update.sh` | Wrapper script for launchd automation |
+| `src/models/params.py` | EloParams frozen dataclass (all tunable parameters) |
+| `src/backtesting/engine.py` | Backtest engine: replays season, measures accuracy |
+| `src/backtesting/sweep.py` | Parameter grid generation + parallel sweep execution |
+| `scripts/param_sweep.py` | CLI for parameter optimization sweeps |
+| `tests/test_backtest_engine.py` | Engine unit tests (40 tests) |
+| `tests/test_model_regression.py` | Model accuracy regression tests (6 tests) |
 | `src/utils/update_status.py` | Check daily update status (lightweight, no heavy imports) |
 
 ## How to Run
@@ -59,6 +66,11 @@ config.py               → All configuration constants + now_ct() timezone help
 
 # Run tests
 /opt/homebrew/bin/python3.11 -m pytest tests/ -v
+
+# Run parameter sweep (find optimal Elo params)
+/opt/homebrew/bin/python3.11 scripts/param_sweep.py --quick      # ~243 combos, ~4s
+/opt/homebrew/bin/python3.11 scripts/param_sweep.py              # Full sweep, ~261 combos
+/opt/homebrew/bin/python3.11 scripts/param_sweep.py --param k_factor 15 18 20 --param home_advantage 30 35 40
 ```
 
 ## Automated Daily Updates
@@ -95,6 +107,36 @@ launchctl list | grep nba-betting
 ```
 
 ## Recent Changes (February 2026)
+
+**Backtesting Engine & Parameter Optimization:**
+- New backtest engine (`src/backtesting/engine.py`) replays a full season in-memory
+  - Measures: pick accuracy, spread error, Brier score, confidence-bucketed accuracy, total error
+  - All math self-contained (duplicates elo.py logic with explicit EloParams), zero production code modified
+  - No injury adjustments in backtests (historical per-game injury data not stored)
+- New `EloParams` frozen dataclass (`src/models/params.py`) holds all 15 tunable parameters
+  - Immutable + hashable for safe parallel sweeps
+  - `EloParams.production()` factory returns current defaults
+- Parameter sweep tool (`src/backtesting/sweep.py` + `scripts/param_sweep.py`)
+  - Generates Cartesian product grids, runs backtests in parallel via ProcessPoolExecutor
+  - CLI: `--quick` (small grid), `--param name val1 val2` (custom), full sweep (groups of 2-3 params)
+  - Results saved to `data/sweep_results/sweep_YYYYMMDD_HHMMSS.csv`
+- Model regression tests (`tests/test_model_regression.py`)
+  - Asserts: accuracy >= 62%, spread error <= 12, Brier <= 0.23, high-conf accuracy >= 69%
+  - Skips if <100 completed games; thresholds updated as model improves
+- 40 engine unit tests (`tests/test_backtest_engine.py`)
+  - Math consistency with production elo.py, metrics ranges, synthetic data scenarios
+
+**K-Factor Parameter Optimization (from sweep results):**
+- Full sweep across 261 parameter combinations on 838 games
+- Best result: `k_factor=15, k_decay_max_multiplier=2.0, k_decay_games=300`
+  - Pick accuracy: 61.7% → **63.1%** (+1.4%)
+  - Brier score: 0.2288 → **0.2268** (better calibration)
+  - High-confidence accuracy: 70.1% → **71.3%**
+- Updated `config.py`: `ELO_K_FACTOR` 20 → **15**
+- Updated `src/models/elo.py`: `K_DECAY_GAMES` 400 → **300**, `K_DECAY_MAX_MULTIPLIER` 1.5 → **2.0**
+- Interpretation: start season at K=30 (same as before: 15×2.0), settle to K=15 after 300 games
+  - More aggressive early learning, more conservative steady-state (less overreaction noise)
+- O/D Elo rebuilt via `backfill_od_elo.py` with new parameters
 
 **Codebase Quality Fixes (10 issues):**
 
@@ -317,9 +359,9 @@ launchctl list | grep nba-betting
 
 **Elo Model Improvements (Phase 1):**
 - Enabled Margin of Victory (MOV) Elo - blowout wins now worth more than close games
-- Added K-factor decay through season - early season K is 50% higher (more uncertainty)
+- Added K-factor decay through season - early season K is 100% higher (more uncertainty)
 - MOV multiplier: `ln(margin + 1) × (2.2 / (elo_diff × 0.001 + 2.2))`, clamped 0.5-3.0
-- K-decay: Starts at 30 (1.5× base), decays linearly to 20 over first 400 league games
+- K-decay: Starts at 30 (2.0× base), decays linearly to 15 over first 300 league games (optimized via sweep)
 - Files: `src/models/elo.py`, `scripts/daily_update.py`
 
 **Elo Model Improvements (Phase 2) - Rest Days:**
@@ -381,8 +423,8 @@ launchctl list | grep nba-betting
 
 | Parameter | Value | Source |
 |-----------|-------|--------|
-| K-factor (base) | 20 | FiveThirtyEight methodology |
-| K-factor (season start) | 30 | 1.5× base, decays over 400 games |
+| K-factor (base) | 15 | Optimized via parameter sweep (was 20) |
+| K-factor (season start) | 30 | 2.0× base, decays over 300 games |
 | Home advantage | 35 Elo | ~1.4 points spread (2025-26 actual) |
 | Spread divisor | 25 | 25 Elo = 1 point |
 | Season regression | 33% toward 1500 | Accounts for roster turnover |
@@ -424,9 +466,11 @@ Negative values clamped to 0
 
 ### Up Next
 1. **Spread/total value betting** - Find value on spreads and totals (not just moneyline)
-2. **Historical backtesting** - Validate O/D Elo and player impact accuracy on past seasons
 
 ### Recently Completed
+- ✅ **Backtesting engine & parameter sweep** - Replay seasons, measure accuracy, optimize params in parallel
+- ✅ **K-factor optimization** - Sweep found K=15/decay=300/mult=2.0 improves accuracy 61.7%→63.1%
+- ✅ **Model regression tests** - Automated accuracy thresholds catch regressions (62% acc, 0.23 Brier)
 - ✅ **O/D Elo home advantage fix** - Was double the correct value (2.7 vs 1.4 points); now derived from config
 - ✅ **DST-aware timezone** - Uses `zoneinfo.ZoneInfo("America/Chicago")` instead of hardcoded UTC-6
 - ✅ **Structured logging** - All `print()` calls converted to `logging` module in scripts and src

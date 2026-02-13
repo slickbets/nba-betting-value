@@ -14,8 +14,8 @@ from config import (
 
 # Season constants for K-decay
 GAMES_PER_SEASON = 1230  # 30 teams × 82 games / 2
-K_DECAY_GAMES = 400  # Games over which K decays from max to base
-K_DECAY_MAX_MULTIPLIER = 1.5  # K is 50% higher at season start
+K_DECAY_GAMES = 300  # Games over which K decays from max to base
+K_DECAY_MAX_MULTIPLIER = 2.0  # K is 100% higher at season start
 
 
 def calculate_k_with_decay(games_played: int, base_k: float = ELO_K_FACTOR) -> float:
