@@ -209,7 +209,7 @@ pytest tests/ -v
 - [x] **O/D Elo home advantage fix** - Was double the correct value; now derived from config
 - [x] **DST-aware timezone** - Correct Central Time during daylight saving
 - [x] **Structured logging** - All print() calls converted to Python logging module
-- [x] **League avg score monitoring** - Daily update warns if actual PPG drifts from config
+- [x] **Dynamic league avg score** - Auto-updated from DB at runtime; no more manual config edits as PPG drifts
 - [x] **Backtesting engine** - Replay full seasons to measure model accuracy under any parameter set
 - [x] **Parameter sweep optimization** - Found optimal K-factor params, improved accuracy 61.7% → 63.1%
 - [x] **Model regression tests** - Automated thresholds prevent accuracy drops (62% min, 0.23 Brier max)

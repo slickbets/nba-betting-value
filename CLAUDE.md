@@ -187,6 +187,16 @@ launchctl list | grep nba-betting
     - `check_league_avg_score()` runs at end of daily update, logs warning if actual avg differs from config by >1 point
     - Config constant kept as default/fallback
 
+**Dynamic LEAGUE_AVG_SCORE:**
+- `LEAGUE_AVG_SCORE` was hardcoded at 114.5 but actual league avg drifted to ~115.5 over the season
+- This feeds into all O/D Elo calculations — predicted totals were systematically ~2 points low
+- `check_league_avg_score()` now sets `config.LEAGUE_AVG_SCORE` at runtime from DB data (was warn-only)
+- Moved the call from end of `main()` to **before** `update_elo_ratings()` and `generate_predictions()` so the updated value is used immediately
+- `scripts/backfill_od_elo.py` also fetches and sets the actual avg before replaying games
+- Updated hardcoded default from 114.5 → 115.5 in `config.py` and `src/models/params.py`
+- Falls back to config default if DB returns None (season start)
+- Files: `config.py`, `src/models/params.py`, `scripts/daily_update.py`, `scripts/backfill_od_elo.py`
+
 **Central Time Fix for Cloud Deployment:**
 - `datetime.now()` returns UTC on Railway, causing the app to default to the wrong date after 6 PM CT
 - Added `now_ct()` helper in `config.py` that returns current time in Central Time
@@ -432,7 +442,7 @@ launchctl list | grep nba-betting
 | B2B penalty | -25 Elo | ~1 point spread penalty |
 | Rest bonus (2d) | +5 Elo | Extra rest advantage |
 | Rest bonus (3d+) | +8 Elo | Well-rested team cap |
-| League avg score | 114.5 | For O/D Elo expected score calc |
+| League avg score | 115.5 | For O/D Elo expected score calc (auto-updated from DB at runtime) |
 
 Win probability formula:
 ```
@@ -475,7 +485,7 @@ Negative values clamped to 0
 - ✅ **DST-aware timezone** - Uses `zoneinfo.ZoneInfo("America/Chicago")` instead of hardcoded UTC-6
 - ✅ **Structured logging** - All `print()` calls converted to `logging` module in scripts and src
 - ✅ **O/D Elo test coverage** - 9 new tests covering all O/D Elo functions
-- ✅ **League avg score check** - Daily update warns if actual PPG drifts from config constant
+- ✅ **Dynamic league avg score** - Auto-updated from DB at runtime (was hardcoded, drifted ~1 point causing ~2pt low totals)
 - ✅ **Stale player impact cleanup** - Previous-season entries cleared on daily update
 - ✅ **ESPN scoreboard fallback** - Refresh button works on cloud deployments (Railway) where NBA API is blocked
 - ✅ **Player impact USG% weighting** - Reduces team-context bias (Caruso 19→8, SGA stays 27)

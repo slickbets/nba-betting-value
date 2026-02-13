@@ -33,7 +33,7 @@ ELO_INITIAL_RATING = 1500.0
 ELO_SPREAD_DIVISOR = 25.0  # Elo diff / this = predicted spread
 
 # O/D Elo Parameters
-LEAGUE_AVG_SCORE = 114.5  # League average points per game (for O/D Elo calculations)
+LEAGUE_AVG_SCORE = 115.5  # Fallback league avg PPG (auto-updated at runtime by daily_update)
 USE_OD_ELO = True  # Feature flag for O/D Elo (set to False to fall back to composite)
 
 # Value Bet Thresholds

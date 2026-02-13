@@ -11,10 +11,12 @@ from src.data.database import (
     init_database,
     get_games_by_season,
     get_all_teams,
+    get_league_avg_score,
     update_team_od_elo,
     update_game_od_elo_snapshots,
 )
 from src.models.elo import update_od_elo, calculate_k_with_decay
+import config
 from config import CURRENT_SEASON, ELO_INITIAL_RATING
 
 
@@ -34,6 +36,12 @@ def backfill_od_elo(season: str = CURRENT_SEASON, dry_run: bool = False):
 
     # Initialize database
     init_database()
+
+    # Auto-update league avg score from DB
+    actual_avg = get_league_avg_score(season)
+    if actual_avg is not None:
+        config.LEAGUE_AVG_SCORE = actual_avg
+        print(f"   League avg score set to {actual_avg:.1f} from DB")
 
     # Step 1: Reset all O/D Elo to 1500
     print("\n1. Resetting all team O/D Elo to 1500...")

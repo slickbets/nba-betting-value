@@ -489,18 +489,24 @@ def check_and_seed_od_elo():
 
 
 def check_league_avg_score():
-    """Check if actual league average score differs significantly from config."""
+    """Update LEAGUE_AVG_SCORE at runtime from actual DB data."""
+    import config
+
     actual_avg = get_league_avg_score(CURRENT_SEASON)
-    if actual_avg is not None:
-        diff = abs(actual_avg - LEAGUE_AVG_SCORE)
-        if diff > 1.0:
-            logger.warning(
-                "League avg score from DB (%.1f) differs from config (%.1f) by %.1f points. "
-                "Consider updating LEAGUE_AVG_SCORE in config.py.",
-                actual_avg, LEAGUE_AVG_SCORE, diff,
-            )
-        else:
-            logger.info("League avg score: %.1f (config: %.1f)", actual_avg, LEAGUE_AVG_SCORE)
+    if actual_avg is None:
+        logger.info("No league avg score in DB yet, using config default (%.1f)", config.LEAGUE_AVG_SCORE)
+        return
+
+    old_val = config.LEAGUE_AVG_SCORE
+    config.LEAGUE_AVG_SCORE = actual_avg
+    diff = abs(actual_avg - old_val)
+    if diff > 1.0:
+        logger.warning(
+            "League avg score auto-updated: %.1f → %.1f (config default was %.1f, diff %.1f)",
+            old_val, actual_avg, old_val, diff,
+        )
+    else:
+        logger.info("League avg score: %.1f (config default: %.1f)", actual_avg, old_val)
 
 
 def main(force: bool = False):
@@ -521,6 +527,9 @@ def main(force: bool = False):
     # Check if O/D Elo needs seeding (first run with new feature)
     check_and_seed_od_elo()
 
+    # Auto-update league avg score before Elo/predictions use it
+    check_league_avg_score()
+
     # Run updates
     update_game_results()
     update_elo_ratings()
@@ -530,9 +539,6 @@ def main(force: bool = False):
     fetch_odds()
     update_player_impact()
     auto_settle_bets()
-
-    # Check league average score vs config
-    check_league_avg_score()
 
     # Mark as completed
     mark_as_ran()

@@ -17,7 +17,7 @@ class EloParams:
     home_advantage: float = 35.0
     spread_divisor: float = 25.0
     initial_rating: float = 1500.0
-    league_avg_score: float = 114.5
+    league_avg_score: float = 115.5
     season_regression_factor: float = 0.33
 
     # K-factor decay
