@@ -232,6 +232,10 @@ def process_scoreboard_for_db(scoreboard_df: pd.DataFrame, season: str) -> list[
         home_team_id = row['HOME_TEAM_ID']
         away_team_id = row['VISITOR_TEAM_ID']
 
+        # Skip rows with missing team IDs (e.g., All-Star games before rosters are set)
+        if home_team_id is None or away_team_id is None:
+            continue
+
         # Check for scores (may not exist for scheduled games)
         home_score = row.get('HOME_TEAM_SCORE')
         away_score = row.get('AWAY_TEAM_SCORE')
