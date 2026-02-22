@@ -39,6 +39,7 @@ config.py               → All configuration constants + now_ct() timezone help
 | `app/pages/5_Model_Accuracy.py` | Track model prediction accuracy |
 | `scripts/daily_update.py` | Daily refresh script (results, Elo, predictions, odds, player impact) |
 | `scripts/backfill_od_elo.py` | Rebuild O/D Elo by replaying all season games |
+| `scripts/backfill_missing_days.py` | Backfill games/predictions/Elo from NBA CDN when NBA API is down |
 | `scripts/run_daily_update.sh` | Wrapper script for launchd automation |
 | `src/models/params.py` | EloParams frozen dataclass (all tunable parameters) |
 | `src/backtesting/engine.py` | Backtest engine: replays season, measures accuracy |
@@ -60,6 +61,9 @@ config.py               → All configuration constants + now_ct() timezone help
 
 # Rebuild O/D Elo from historical games (run after season change or to fix data):
 /opt/homebrew/bin/python3.11 scripts/backfill_od_elo.py --season 2025-26
+
+# Backfill missing days from NBA CDN (when NBA API is down):
+/opt/homebrew/bin/python3.11 scripts/backfill_missing_days.py
 
 # Launch UI
 /opt/homebrew/bin/python3.11 -m streamlit run app/main.py
@@ -107,6 +111,20 @@ launchctl list | grep nba-betting
 ```
 
 ## Recent Changes (February 2026)
+
+**NBA CDN Backfill Script (NBA API outage workaround):**
+- `stats.nba.com` started timing out ~2/12, blocking daily updates for a week+ (All-Star break + 2/19-2/22)
+- New script `scripts/backfill_missing_days.py` fetches game data from `cdn.nba.com` (different host, still works)
+- CDN endpoint: `https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json`
+  - Provides real NBA `gameId` values, team IDs, scores for final games, game status, start times
+- Processes dates chronologically so each date's predictions use correct pre-game Elo state:
+  1. Insert games as `scheduled` (preserves existing DB data via COALESCE)
+  2. Generate predictions (injuries only for today, rest adjustments for all dates)
+  3. Mark final games with scores from CDN
+  4. Update Elo ratings for newly finalized games
+- Successfully backfilled 2/19 (10 games), 2/20 (9 games), 2/21 (6 games), 2/22 (11 games)
+- `daily_update.py` also updated with ESPN fallback for `update_game_results()` (matches existing `fetch_todays_games()` pattern)
+- Files: `scripts/backfill_missing_days.py` (new), `scripts/daily_update.py` (ESPN fallback in update_game_results)
 
 **Backtesting Engine & Parameter Optimization:**
 - New backtest engine (`src/backtesting/engine.py`) replays a full season in-memory
@@ -478,6 +496,7 @@ Negative values clamped to 0
 1. **Spread/total value betting** - Find value on spreads and totals (not just moneyline)
 
 ### Recently Completed
+- ✅ **NBA CDN backfill script** - Recover from NBA API outages using `cdn.nba.com` schedule data
 - ✅ **Backtesting engine & parameter sweep** - Replay seasons, measure accuracy, optimize params in parallel
 - ✅ **K-factor optimization** - Sweep found K=15/decay=300/mult=2.0 improves accuracy 61.7%→63.1%
 - ✅ **Model regression tests** - Automated accuracy thresholds catch regressions (62% acc, 0.23 Brier)
@@ -521,7 +540,7 @@ Negative values clamped to 0
 
 | Data | Source | Update Frequency |
 |------|--------|------------------|
-| Games & Scores | NBA API (`nba_api` package), ESPN fallback for cloud | On daily_update.py run |
+| Games & Scores | NBA API (`nba_api` package), ESPN fallback for cloud, NBA CDN fallback for outages | On daily_update.py run |
 | Injuries | ESPN public API | On daily_update.py run |
 | Live Game Status | ESPN scoreboard API (fallback when NBA API blocked) | On Refresh Data button |
 | Odds | The Odds API | On page load (costs API credits) |
@@ -533,6 +552,7 @@ Negative values clamped to 0
 - Model is pre-game only (doesn't update with live scores)
 - Only finds value on moneyline bets (spreads/totals not yet implemented)
 - Odds API has limited free tier (500 requests/month)
+- NBA API (`stats.nba.com`) periodically times out for days/weeks; use `backfill_missing_days.py` with NBA CDN to recover
 - After changing seasons, must run `backfill_od_elo.py` to rebuild O/D Elo ratings
 - O/D Elo predicted totals have weak game-level correlation (r=0.233) - single-game variance is too high
 - Players with 0 GP this season (season-long injuries, mid-season acquisitions) have no impact data, which is correct since their absence is already baked into team Elo

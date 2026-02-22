@@ -97,6 +97,7 @@ from src.data.database import (
 from src.data.nba_fetcher import (
     fetch_season_games,
     fetch_games_by_date,
+    fetch_scoreboard_espn,
     process_games_for_db,
     process_scoreboard_for_db,
     fetch_player_impact_stats,
@@ -126,21 +127,53 @@ def update_game_results():
         # Fetch from NBA API
         games = fetch_games_by_date(date_str)
 
-        if games.empty:
+        if not games.empty:
+            processed = process_scoreboard_for_db(games, CURRENT_SEASON)
+            for game in processed:
+                if game['status'] == 'final' and game['home_score'] and game['away_score']:
+                    update_game_result(
+                        game_id=game['game_id'],
+                        home_score=game['home_score'],
+                        away_score=game['away_score']
+                    )
+                    logger.info("Updated: %s (%s-%s)", game['game_id'], game['home_score'], game['away_score'])
+            continue
+
+        # ESPN fallback when NBA API returns empty
+        logger.info("NBA API returned no data for %s, trying ESPN fallback...", date_str)
+        espn_games = fetch_scoreboard_espn(date_str)
+        if not espn_games:
             logger.info("No games found for %s", date_str)
             continue
 
-        processed = process_scoreboard_for_db(games, CURRENT_SEASON)
+        # Match ESPN games to existing DB games by team abbreviation
+        existing_games = get_games_by_date(date_str)
+        if existing_games.empty:
+            logger.info("No existing DB games for %s to match ESPN data against", date_str)
+            continue
 
-        for game in processed:
-            if game['status'] == 'final' and game['home_score'] and game['away_score']:
-                # Update game result
+        updated = 0
+        for espn_game in espn_games:
+            if espn_game['status'] != 'final' or not espn_game['home_score'] or not espn_game['away_score']:
+                continue
+
+            match = existing_games[
+                (existing_games['home_abbr'] == espn_game['home_abbr']) &
+                (existing_games['away_abbr'] == espn_game['away_abbr'])
+            ]
+            if not match.empty:
+                game_id = match.iloc[0]['game_id']
                 update_game_result(
-                    game_id=game['game_id'],
-                    home_score=game['home_score'],
-                    away_score=game['away_score']
+                    game_id=game_id,
+                    home_score=espn_game['home_score'],
+                    away_score=espn_game['away_score']
                 )
-                logger.info("Updated: %s (%s-%s)", game['game_id'], game['home_score'], game['away_score'])
+                updated += 1
+                logger.info("Updated (ESPN): %s %s-%s (%s-%s)",
+                            game_id, espn_game['away_abbr'], espn_game['home_abbr'],
+                            espn_game['away_score'], espn_game['home_score'])
+
+        logger.info("Updated %d games from ESPN for %s", updated, date_str)
 
 
 def update_elo_ratings():
@@ -268,16 +301,48 @@ def fetch_todays_games():
     today = now_ct().strftime("%Y-%m-%d")
     games = fetch_games_by_date(today)
 
-    if games.empty:
+    if not games.empty:
+        processed = process_scoreboard_for_db(games, CURRENT_SEASON)
+        for game in processed:
+            upsert_game(**game)
+        logger.info("Loaded %d games for today", len(processed))
+        return
+
+    # ESPN fallback when NBA API returns empty
+    logger.info("NBA API returned no data for today, trying ESPN fallback...")
+    espn_games = fetch_scoreboard_espn(today)
+    if not espn_games:
         logger.info("No games scheduled today")
         return
 
-    processed = process_scoreboard_for_db(games, CURRENT_SEASON)
+    # Update existing DB games with ESPN data (status, scores, times)
+    existing_games = get_games_by_date(today)
+    if existing_games.empty:
+        logger.info("No existing DB games for today to update from ESPN")
+        return
 
-    for game in processed:
-        upsert_game(**game)
+    updated = 0
+    for espn_game in espn_games:
+        match = existing_games[
+            (existing_games['home_abbr'] == espn_game['home_abbr']) &
+            (existing_games['away_abbr'] == espn_game['away_abbr'])
+        ]
+        if not match.empty:
+            game_row = match.iloc[0]
+            upsert_game(
+                game_id=game_row['game_id'],
+                season=game_row['season'],
+                game_date=today,
+                game_time=espn_game.get('game_time'),
+                home_team_id=int(game_row['home_team_id']),
+                away_team_id=int(game_row['away_team_id']),
+                home_score=espn_game['home_score'],
+                away_score=espn_game['away_score'],
+                status=espn_game['status'],
+            )
+            updated += 1
 
-    logger.info("Loaded %d games for today", len(processed))
+    logger.info("Updated %d games from ESPN for today", updated)
 
 
 def fetch_injuries():

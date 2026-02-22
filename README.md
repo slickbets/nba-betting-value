@@ -86,6 +86,7 @@ nba-betting-value/
 ├── scripts/               # CLI scripts
 │   ├── init_db.py
 │   ├── backfill_history.py
+│   ├── backfill_missing_days.py # Recover from NBA API outages via CDN
 │   ├── daily_update.py
 │   └── param_sweep.py        # Parameter optimization CLI
 │
@@ -187,7 +188,7 @@ pytest tests/ -v
 - This is for educational purposes - no guarantee of profit
 - The Odds API free tier has limited requests (500/month)
 - Player impact data depends on NBA API availability (players with 0 GP not tracked)
-- NBA API (`stats.nba.com`) is blocked on cloud servers; ESPN fallback handles live game status updates
+- NBA API (`stats.nba.com`) is blocked on cloud servers and periodically times out; ESPN and CDN fallbacks handle this
 - Cloud servers use UTC; app uses Central Time (DST-aware) via `now_ct()` helper for correct date defaults
 
 ## Roadmap
@@ -213,6 +214,7 @@ pytest tests/ -v
 - [x] **Backtesting engine** - Replay full seasons to measure model accuracy under any parameter set
 - [x] **Parameter sweep optimization** - Found optimal K-factor params, improved accuracy 61.7% → 63.1%
 - [x] **Model regression tests** - Automated thresholds prevent accuracy drops (62% min, 0.23 Brier max)
+- [x] **NBA CDN backfill** - Recover from NBA API outages using `cdn.nba.com` schedule data
 
 ### Up Next
 - [ ] **Spread/total value betting** - Find value on spreads and totals (not just moneyline)
