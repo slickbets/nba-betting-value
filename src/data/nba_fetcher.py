@@ -23,6 +23,23 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from config import CURRENT_SEASON, now_ct
 
 
+# Headers required by Akamai's WAF on stats.nba.com (as of Feb 2026).
+# Without these, requests silently hang until timeout. The nba_api library's
+# default headers (just User-Agent + Referer) no longer pass the bot check.
+NBA_API_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Origin': 'https://www.nba.com',
+    'Referer': 'https://www.nba.com/',
+    'Connection': 'keep-alive',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-site',
+}
+
+
 # ESPN scoreboard API (works from cloud servers unlike stats.nba.com)
 ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
 
@@ -71,6 +88,7 @@ def fetch_season_games(season: str = CURRENT_SEASON,
             season_nullable=season,
             league_id_nullable="00",  # NBA
             team_id_nullable=team_id,
+            headers=NBA_API_HEADERS,
         )
         time.sleep(0.6)  # Rate limiting
 
@@ -98,7 +116,7 @@ def fetch_todays_games() -> pd.DataFrame:
     """
     try:
         today = now_ct().strftime("%Y-%m-%d")
-        board = scoreboardv2.ScoreboardV2(game_date=today)
+        board = scoreboardv2.ScoreboardV2(game_date=today, headers=NBA_API_HEADERS)
         time.sleep(0.6)
 
         games_df = board.get_data_frames()[0]  # GameHeader
@@ -121,7 +139,7 @@ def fetch_games_by_date(game_date: str) -> pd.DataFrame:
         DataFrame with games for that date including scores
     """
     try:
-        board = scoreboardv2.ScoreboardV2(game_date=game_date)
+        board = scoreboardv2.ScoreboardV2(game_date=game_date, headers=NBA_API_HEADERS)
         time.sleep(0.6)
 
         dfs = board.get_data_frames()
@@ -329,6 +347,7 @@ def fetch_player_impact_stats(season: str = CURRENT_SEASON,
             season=season,
             measure_type_detailed_defense='Advanced',
             per_mode_detailed='PerGame',
+            headers=NBA_API_HEADERS,
         )
         time.sleep(0.6)  # Rate limiting
 
@@ -387,6 +406,7 @@ def fetch_team_offensive_defensive_ratings(season: str = CURRENT_SEASON) -> pd.D
             season=season,
             measure_type_detailed_defense='Advanced',
             per_mode_detailed='PerGame',
+            headers=NBA_API_HEADERS,
         )
         time.sleep(0.6)  # Rate limiting
 

@@ -112,8 +112,15 @@ launchctl list | grep nba-betting
 
 ## Recent Changes (February 2026)
 
-**NBA CDN Backfill Script (NBA API outage workaround):**
-- `stats.nba.com` started timing out ~2/12, blocking daily updates for a week+ (All-Star break + 2/19-2/22)
+**NBA API Headers Fix (Akamai WAF):**
+- `stats.nba.com` started timing out ~2/12 — Akamai tightened bot detection on NBA's CDN
+- Root cause: `nba_api` library only sends `User-Agent` + `Referer`, which no longer passes Akamai's browser fingerprint check
+- Fix: Added `NBA_API_HEADERS` dict in `nba_fetcher.py` with full browser-like headers (`Origin`, `Accept-Encoding`, `Accept-Language`, `Sec-Fetch-*`, etc.) and passed to all 4 endpoint calls
+- All `nba_api` endpoints now respond in <0.3s (were hanging for 30s+ then timing out)
+- File: `src/data/nba_fetcher.py`
+
+**NBA CDN Backfill Script (for future outages):**
+- `stats.nba.com` was down for a week+ (All-Star break + 2/19-2/22) before the headers fix was found
 - New script `scripts/backfill_missing_days.py` fetches game data from `cdn.nba.com` (different host, still works)
 - CDN endpoint: `https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json`
   - Provides real NBA `gameId` values, team IDs, scores for final games, game status, start times
@@ -496,6 +503,7 @@ Negative values clamped to 0
 1. **Spread/total value betting** - Find value on spreads and totals (not just moneyline)
 
 ### Recently Completed
+- ✅ **NBA API headers fix** - Akamai WAF required browser-like headers; added `NBA_API_HEADERS` to all `nba_api` calls
 - ✅ **NBA CDN backfill script** - Recover from NBA API outages using `cdn.nba.com` schedule data
 - ✅ **Backtesting engine & parameter sweep** - Replay seasons, measure accuracy, optimize params in parallel
 - ✅ **K-factor optimization** - Sweep found K=15/decay=300/mult=2.0 improves accuracy 61.7%→63.1%
@@ -552,7 +560,7 @@ Negative values clamped to 0
 - Model is pre-game only (doesn't update with live scores)
 - Only finds value on moneyline bets (spreads/totals not yet implemented)
 - Odds API has limited free tier (500 requests/month)
-- NBA API (`stats.nba.com`) periodically times out for days/weeks; use `backfill_missing_days.py` with NBA CDN to recover
+- NBA API (`stats.nba.com`) is behind Akamai WAF that periodically tightens bot detection; `NBA_API_HEADERS` in `nba_fetcher.py` may need updating if requests start timing out again
 - After changing seasons, must run `backfill_od_elo.py` to rebuild O/D Elo ratings
 - O/D Elo predicted totals have weak game-level correlation (r=0.233) - single-game variance is too high
 - Players with 0 GP this season (season-long injuries, mid-season acquisitions) have no impact data, which is correct since their absence is already baked into team Elo
