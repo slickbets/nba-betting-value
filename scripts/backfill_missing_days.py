@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Backfill missing days (2/19-2/22) from NBA CDN schedule.
+"""Backfill missing game days from NBA CDN schedule.
 
-The NBA API (stats.nba.com) has been timing out since ~2/12, so the daily
-update hasn't been able to fetch game data. This script uses the CDN schedule
-(cdn.nba.com) which is on a different host and still works.
+The NBA API (stats.nba.com) periodically times out, blocking daily updates.
+This script uses the CDN schedule (cdn.nba.com) which is on a different host
+and still works.
 
 For each date, it:
   1. Inserts games as 'scheduled' (preserves existing DB data via COALESCE)
@@ -14,7 +14,12 @@ For each date, it:
 This order ensures predictions use the Elo state from BEFORE that date's games.
 
 Usage:
-    /opt/homebrew/bin/python3.11 scripts/backfill_missing_days.py
+    # Backfill specific dates:
+    /opt/homebrew/bin/python3.11 scripts/backfill_missing_days.py 2026-02-23
+    /opt/homebrew/bin/python3.11 scripts/backfill_missing_days.py 2026-02-19 2026-02-20
+
+    # Backfill today only:
+    /opt/homebrew/bin/python3.11 scripts/backfill_missing_days.py --today
 """
 
 import json
@@ -42,9 +47,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Dates to backfill (post-All-Star break through today)
-TARGET_DATES = ['2026-02-19', '2026-02-20', '2026-02-21', '2026-02-22']
-
 CDN_SCHEDULE_URL = 'https://cdn.nba.com/static/json/staticData/scheduleLeagueV2.json'
 
 
@@ -66,7 +68,7 @@ def parse_game_time_et(time_est_str: str) -> str | None:
         return None
 
 
-def fetch_nba_cdn_schedule() -> dict[str, list[dict]]:
+def fetch_nba_cdn_schedule(target_dates: list[str]) -> dict[str, list[dict]]:
     """Fetch schedule from NBA CDN, return {date_str: [game_dicts]}.
 
     Each game dict has keys:
@@ -80,7 +82,7 @@ def fetch_nba_cdn_schedule() -> dict[str, list[dict]]:
 
     game_dates = data['leagueSchedule']['gameDates']
 
-    target_set = set(TARGET_DATES)
+    target_set = set(target_dates)
     status_map = {1: 'scheduled', 2: 'in_progress', 3: 'final'}
     result = {}
 
@@ -204,10 +206,40 @@ def process_date(date_str: str, games: list[dict], is_today: bool):
         update_elo_ratings()
 
 
+def parse_target_dates(args: list[str]) -> list[str]:
+    """Parse CLI arguments into a sorted list of date strings."""
+    if '--today' in args:
+        return [now_ct().strftime('%Y-%m-%d')]
+
+    dates = []
+    for arg in args:
+        if arg.startswith('-'):
+            continue
+        # Validate YYYY-MM-DD format
+        try:
+            datetime.strptime(arg, '%Y-%m-%d')
+            dates.append(arg)
+        except ValueError:
+            logger.error("Invalid date format: %s (expected YYYY-MM-DD)", arg)
+            sys.exit(1)
+
+    if not dates:
+        logger.error("No dates specified. Usage:")
+        logger.error("  backfill_missing_days.py 2026-02-23")
+        logger.error("  backfill_missing_days.py --today")
+        logger.error("  backfill_missing_days.py 2026-02-19 2026-02-20 2026-02-21")
+        sys.exit(1)
+
+    return sorted(dates)
+
+
 def main():
+    target_dates = parse_target_dates(sys.argv[1:])
+
     logger.info("=" * 50)
     logger.info("NBA Betting Value - Backfill Missing Days")
     logger.info("Run time: %s", now_ct().strftime('%Y-%m-%d %H:%M:%S'))
+    logger.info("Target dates: %s", ', '.join(target_dates))
     logger.info("=" * 50)
 
     init_database()
@@ -216,12 +248,12 @@ def main():
     check_league_avg_score()
 
     # Fetch CDN schedule for all target dates
-    schedule = fetch_nba_cdn_schedule()
+    schedule = fetch_nba_cdn_schedule(target_dates)
 
     today = now_ct().strftime('%Y-%m-%d')
 
     # Process each date chronologically
-    for date_str in TARGET_DATES:
+    for date_str in target_dates:
         if date_str not in schedule:
             logger.info("No CDN data for %s, skipping", date_str)
             continue
@@ -233,7 +265,7 @@ def main():
     logger.info("=" * 50)
     logger.info("Backfill complete! Verification:")
     logger.info("=" * 50)
-    for date_str in TARGET_DATES:
+    for date_str in target_dates:
         df = get_games_by_date(date_str)
         if df.empty:
             logger.info("  %s: no games", date_str)
