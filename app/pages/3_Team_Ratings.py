@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+import requests
+
 from src.data.database import (
     init_database,
     get_all_teams,
@@ -30,6 +32,40 @@ teams_df = get_all_teams()
 if teams_df.empty:
     st.warning("No teams found. Please run `python scripts/init_db.py` to initialize the database.")
     st.stop()
+
+# Fetch W/L records from ESPN standings API
+ESPN_ABBR_MAP = {'GS': 'GSW', 'SA': 'SAS', 'NY': 'NYK', 'NO': 'NOP', 'UTAH': 'UTA', 'WSH': 'WAS'}
+
+@st.cache_data(ttl=3600)  # Cache for 1 hour
+def fetch_espn_records():
+    """Fetch current W/L records from ESPN standings API."""
+    try:
+        resp = requests.get(
+            'https://site.api.espn.com/apis/v2/sports/basketball/nba/standings',
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        records = {}
+        for conf in data.get('children', []):
+            for team in conf.get('standings', {}).get('entries', []):
+                abbr = team.get('team', {}).get('abbreviation', '')
+                abbr = ESPN_ABBR_MAP.get(abbr, abbr)
+                stats = {s['name']: s for s in team.get('stats', [])}
+                w = int(stats.get('wins', {}).get('value', 0))
+                l = int(stats.get('losses', {}).get('value', 0))
+                records[abbr] = (w, l)
+        return records
+    except Exception:
+        return {}
+
+espn_records = fetch_espn_records()
+if espn_records:
+    teams_df['wins'] = teams_df['abbreviation'].map(lambda a: espn_records.get(a, (0, 0))[0])
+    teams_df['losses'] = teams_df['abbreviation'].map(lambda a: espn_records.get(a, (0, 0))[1])
+    teams_df['record'] = teams_df.apply(lambda r: f"{r['wins']}-{r['losses']}", axis=1)
+else:
+    teams_df['record'] = '-'
 
 # Rankings table
 st.markdown("### Current Elo Rankings")
@@ -67,7 +103,7 @@ col1, col2 = st.columns([2, 1])
 
 with col1:
     # Rankings table
-    display_df = teams_df[['rank', 'abbreviation', 'full_name', 'current_elo', 'elo_diff', 'tier']].copy()
+    display_df = teams_df[['rank', 'abbreviation', 'full_name', 'record', 'current_elo', 'elo_diff', 'tier']].copy()
     display_df['current_elo'] = display_df['current_elo'].round(0).astype(int)
     display_df['elo_diff'] = display_df['elo_diff'].apply(lambda x: f"{x:+.0f}")
 
@@ -76,6 +112,7 @@ with col1:
             'rank': '#',
             'abbreviation': 'Team',
             'full_name': 'Name',
+            'record': 'W-L',
             'current_elo': 'Elo',
             'elo_diff': 'vs Avg',
             'tier': 'Tier',

@@ -317,10 +317,10 @@ for pred in predictions:
 
         with col3:
             st.markdown("**Prediction**")
-            if pred.predicted_spread < 0:
-                spread_str = f"{pred.home_team} by {abs(pred.predicted_spread):.1f}"
+            if pred.predicted_spread > 0:
+                spread_str = f"{pred.home_team} by {pred.predicted_spread:.1f}"
             else:
-                spread_str = f"{pred.away_team} by {pred.predicted_spread:.1f}"
+                spread_str = f"{pred.away_team} by {abs(pred.predicted_spread):.1f}"
             st.write(f"Spread: {spread_str}")
 
             # Show predicted total if O/D Elo is applied

@@ -77,7 +77,7 @@ class GamePrediction:
     od_elo_applied: bool = False
 
     def __str__(self) -> str:
-        spread_str = f"{self.home_team} {self.predicted_spread:+.1f}" if self.predicted_spread < 0 else f"{self.away_team} {-self.predicted_spread:+.1f}"
+        spread_str = f"{self.home_team} -{abs(self.predicted_spread):.1f}" if self.predicted_spread > 0 else f"{self.away_team} -{abs(self.predicted_spread):.1f}"
         result = (
             f"{self.away_team} @ {self.home_team}\n"
             f"  Win Prob: {self.home_team} {self.home_win_prob:.1%} | "
@@ -357,11 +357,11 @@ def predictions_to_dataframe(predictions: list[GamePrediction]) -> pd.DataFrame:
         if pred.home_win_prob > 0.5:
             favorite = pred.home_team
             favorite_prob = pred.home_win_prob
-            spread_display = f"{pred.home_team} {pred.predicted_spread:.1f}"
+            spread_display = f"{pred.home_team} -{abs(pred.predicted_spread):.1f}"
         else:
             favorite = pred.away_team
             favorite_prob = pred.away_win_prob
-            spread_display = f"{pred.away_team} {-pred.predicted_spread:.1f}"
+            spread_display = f"{pred.away_team} -{abs(pred.predicted_spread):.1f}"
 
         # Calculate total injury impact
         total_injury_impact = abs(pred.home_injury_adjustment) + abs(pred.away_injury_adjustment)

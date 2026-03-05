@@ -152,7 +152,7 @@ This:
 2. Main page shows today's model picks with win probabilities
 3. "Game Details" page shows Elo breakdowns, injuries, rest factors, and live odds
 4. "Model Accuracy" page tracks prediction performance
-5. "Team Ratings" page shows current Elo rankings
+5. "Team Ratings" page shows current Elo rankings with W/L records
 
 ## Configuration
 

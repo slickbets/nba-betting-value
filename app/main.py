@@ -255,7 +255,7 @@ def main():
             'Pick': f"{predicted_winner}",
             'Win Prob': f"{win_prob:.1%}",
             'Confidence': confidence,
-            'Spread': f"{pred.home_team} {pred.predicted_spread:+.1f}" if pred.predicted_spread < 0 else f"{pred.away_team} {-pred.predicted_spread:+.1f}",
+            'Spread': f"{predicted_winner} {-(pred.predicted_spread if predicted_winner == pred.home_team else -pred.predicted_spread):+.1f}",
             'Result': result,
         })
 

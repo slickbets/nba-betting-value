@@ -51,6 +51,7 @@ config.py               → All configuration constants + now_ct() timezone help
 | `tests/test_backtest_engine.py` | Engine unit tests (40 tests) |
 | `tests/test_model_regression.py` | Model accuracy regression tests (6 tests) |
 | `src/utils/update_status.py` | Check daily update status (lightweight, no heavy imports) |
+| `src/utils/time_utils.py` | Shared time conversion (ET → CT) |
 
 ## How to Run
 
@@ -123,6 +124,18 @@ launchctl list | grep nba-betting
 - `app/pages/4_Team_Ratings.py` → `app/pages/3_Team_Ratings.py`: Renumbered
 - Removed from UI: min edge slider, "What is Value Betting?" expander, "First-time Setup" expander, "How Elo Ratings Work" expander
 - Backend unchanged: `src/betting/`, `src/data/odds_fetcher.py`, all scripts/tests still work
+
+**Spread Display Fix (prediction-affecting display bug):**
+- `predicted_spread` convention: positive = home favored, negative = away favored
+- All 4 display locations had inverted logic — showed the wrong team as the spread favorite
+- Fixed in: `app/main.py`, `app/pages/1_Game_Details.py`, `src/models/predictor.py` (`__str__` and `predictions_to_dataframe`)
+- Main page spread now shown from picked team's perspective (sportsbook convention: negative = favored, positive = underdog)
+
+**Team Ratings W/L Records:**
+- Added W-L record column to Team Ratings page (`app/pages/3_Team_Ratings.py`)
+- Fetched from ESPN standings API (`site.api.espn.com/apis/v2/sports/basketball/nba/standings`) — accurate to real NBA standings
+- Cached for 1 hour via `st.cache_data(ttl=3600)`; falls back to `-` if API unavailable
+- ESPN abbreviation mapping reused from `nba_fetcher.py` (GS→GSW, SA→SAS, etc.)
 
 ## Earlier Changes (February 2026)
 
@@ -557,6 +570,7 @@ Negative values clamped to 0
 | Odds | The Odds API | On page load (costs API credits) |
 | Player Impact | NBA API (`leaguedashplayerstats`) | On daily_update.py run |
 | Team O/D Elo | Calculated from game history | On backfill_od_elo.py run, then daily_update.py |
+| Team W/L Records | ESPN standings API | On Team Ratings page load (cached 1 hour) |
 
 ## Known Limitations
 
