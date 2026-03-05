@@ -14,6 +14,7 @@ from nba_api.stats.endpoints import (
     scoreboardv2,
     leaguedashplayerstats,
     leaguedashteamstats,
+    teamplayerdashboard,
 )
 from nba_api.stats.static import teams as nba_teams
 
@@ -386,6 +387,83 @@ def fetch_player_impact_stats(season: str = CURRENT_SEASON,
     except Exception as e:
         logger.error("Error fetching player impact stats: %s", e)
         return pd.DataFrame()
+
+
+def fetch_missing_player_impacts(existing_player_ids: set,
+                                  season: str = CURRENT_SEASON,
+                                  min_minutes: float = 15.0,
+                                  min_games: int = 10) -> pd.DataFrame:
+    """
+    Fetch advanced stats for players missing from the bulk LeagueDashPlayerStats endpoint.
+
+    Uses TeamPlayerDashboard (per-team) to find players that the bulk endpoint
+    silently drops (e.g. Doncic, mid-season trades). Only queries teams that
+    might have missing players — skips teams where all qualifying players are
+    already in existing_player_ids.
+
+    Args:
+        existing_player_ids: Set of player IDs already fetched from bulk endpoint
+        season: NBA season string
+        min_minutes: Minimum MPG to qualify
+        min_games: Minimum GP to qualify
+
+    Returns:
+        DataFrame with same columns as fetch_player_impact_stats, containing
+        only newly found players not in existing_player_ids
+    """
+    all_teams = nba_teams.get_teams()
+    new_players = []
+
+    for team in all_teams:
+        try:
+            stats = teamplayerdashboard.TeamPlayerDashboard(
+                team_id=team['id'],
+                season=season,
+                measure_type_detailed_defense='Advanced',
+                per_mode_detailed='PerGame',
+                headers=NBA_API_HEADERS,
+            )
+            time.sleep(0.6)
+            dfs = stats.get_data_frames()
+            if len(dfs) < 2:
+                continue
+
+            player_df = dfs[1]  # Index 1 = individual player rows
+            if player_df.empty or 'NET_RATING' not in player_df.columns:
+                continue
+
+            for _, row in player_df.iterrows():
+                pid = row.get('PLAYER_ID')
+                if pid in existing_player_ids:
+                    continue
+                gp = row.get('GP', 0)
+                mpg = row.get('MIN', 0)
+                if gp < min_games or mpg < min_minutes:
+                    continue
+
+                net = row.get('NET_RATING', 0)
+                usg = row.get('USG_PCT', 0)
+                impact = net * (mpg / 48) * (usg / 0.20) * 1.5
+
+                new_players.append({
+                    'player_id': pid,
+                    'player_name': row.get('PLAYER_NAME', ''),
+                    'team_abbr': team['abbreviation'],
+                    'net_rating': net,
+                    'minutes_per_game': mpg,
+                    'games_played': gp,
+                    'usg_pct': usg,
+                    'elo_impact': impact,
+                })
+
+        except Exception as e:
+            logger.warning("TeamPlayerDashboard failed for %s: %s", team['abbreviation'], e)
+            continue
+
+    if new_players:
+        logger.info("Found %d missing players via TeamPlayerDashboard", len(new_players))
+        return pd.DataFrame(new_players)
+    return pd.DataFrame()
 
 
 def fetch_team_offensive_defensive_ratings(season: str = CURRENT_SEASON) -> pd.DataFrame:

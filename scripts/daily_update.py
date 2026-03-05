@@ -101,6 +101,7 @@ from src.data.nba_fetcher import (
     process_games_for_db,
     process_scoreboard_for_db,
     fetch_player_impact_stats,
+    fetch_missing_player_impacts,
     fetch_team_offensive_defensive_ratings,
 )
 from src.data.odds_fetcher import get_current_odds
@@ -469,10 +470,9 @@ def update_player_impact():
         impact_df = fetch_player_impact_stats(CURRENT_SEASON)
 
         if impact_df.empty:
-            logger.warning("No player impact data available")
-            return
+            logger.warning("No player impact data available from bulk endpoint")
 
-        # Save to database
+        # Save bulk results to database
         for _, row in impact_df.iterrows():
             upsert_player_impact(
                 player_id=int(row['player_id']),
@@ -486,11 +486,41 @@ def update_player_impact():
                 usg_pct=row.get('usg_pct'),
             )
 
-        # Show top players by impact
-        top_players = impact_df.nlargest(5, 'elo_impact')
-        logger.info("Updated %d players. Top 5 by impact:", len(impact_df))
-        for _, p in top_players.iterrows():
-            logger.info("  %s (%s): %+.1f Elo", p['player_name'], p['team_abbr'], p['elo_impact'])
+        # Fallback: fetch missing players via per-team TeamPlayerDashboard
+        existing_ids = set(int(row['player_id']) for _, row in impact_df.iterrows()) if not impact_df.empty else set()
+        try:
+            missing_df = fetch_missing_player_impacts(existing_ids, CURRENT_SEASON)
+            if not missing_df.empty:
+                for _, row in missing_df.iterrows():
+                    upsert_player_impact(
+                        player_id=int(row['player_id']),
+                        player_name=row['player_name'],
+                        team_abbr=row['team_abbr'],
+                        net_rating=row['net_rating'],
+                        minutes_per_game=row['minutes_per_game'],
+                        games_played=int(row['games_played']),
+                        elo_impact=row['elo_impact'],
+                        season=CURRENT_SEASON,
+                        usg_pct=row.get('usg_pct'),
+                    )
+                logger.info("Added %d missing players via TeamPlayerDashboard fallback", len(missing_df))
+                total_players = len(impact_df) + len(missing_df)
+            else:
+                total_players = len(impact_df)
+        except Exception as e:
+            logger.warning("TeamPlayerDashboard fallback failed: %s", e)
+            total_players = len(impact_df)
+
+        if total_players == 0:
+            logger.warning("No player impact data available")
+            return
+
+        # Show top players by impact (from bulk endpoint only — fallback players logged separately)
+        if not impact_df.empty:
+            top_players = impact_df.nlargest(5, 'elo_impact')
+            logger.info("Updated %d players. Top 5 by impact:", total_players)
+            for _, p in top_players.iterrows():
+                logger.info("  %s (%s): %+.1f Elo", p['player_name'], p['team_abbr'], p['elo_impact'])
 
     except Exception as e:
         logger.error("Error updating player impact: %s", e)
