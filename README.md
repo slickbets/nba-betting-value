@@ -86,6 +86,8 @@ nba-betting-value/
 │
 ├── scripts/               # CLI scripts
 │   ├── init_db.py
+│   ├── rebuild_elo.py         # Full Elo rebuild (composite + O/D)
+│   ├── cleanup_preseason.py   # Remove preseason games from DB
 │   ├── backfill_history.py
 │   ├── backfill_missing_days.py # Recover from NBA API outages via CDN
 │   ├── daily_update.py
@@ -173,10 +175,10 @@ pytest tests/ -v
 
 ## Limitations
 
-- Elo is a simple model - backtested accuracy is ~63% on straight predictions (838 games, 2025-26)
+- Elo is a simple model - backtested accuracy is ~64% on straight predictions (914 games, 2025-26)
 - This is for educational purposes - no guarantee of profit
 - The Odds API free tier has limited requests (500/month)
-- Player impact data depends on NBA API availability (players with 0 GP not tracked)
+- Player impact data depends on NBA API availability; some stars silently dropped from bulk stats endpoint
 - NBA API (`stats.nba.com`) is behind Akamai WAF requiring browser-like headers; if requests start timing out, update `NBA_API_HEADERS` in `nba_fetcher.py`
 - Cloud servers use UTC; app uses Central Time (DST-aware) via `now_ct()` helper for correct date defaults
 

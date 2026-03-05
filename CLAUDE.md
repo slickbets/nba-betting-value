@@ -41,7 +41,9 @@ config.py               → All configuration constants + now_ct() timezone help
 | `app/pages/2_Model_Accuracy.py` | Track model prediction accuracy |
 | `app/pages/3_Team_Ratings.py` | Team Elo rankings |
 | `scripts/daily_update.py` | Daily refresh script (results, Elo, predictions, odds, player impact) |
-| `scripts/backfill_od_elo.py` | Rebuild O/D Elo by replaying all season games |
+| `scripts/rebuild_elo.py` | Full Elo rebuild: composite (MOV + K-decay) + O/D Elo from scratch |
+| `scripts/cleanup_preseason.py` | Remove preseason games and elo_history entries |
+| `scripts/backfill_od_elo.py` | Rebuild O/D Elo only by replaying all season games |
 | `scripts/backfill_missing_days.py` | Backfill games/predictions/Elo from NBA CDN when NBA API is down |
 | `scripts/run_daily_update.sh` | Wrapper script for launchd automation |
 | `src/models/params.py` | EloParams frozen dataclass (all tunable parameters) |
@@ -63,8 +65,14 @@ config.py               → All configuration constants + now_ct() timezone help
 # Force run even if already ran today:
 /opt/homebrew/bin/python3.11 scripts/daily_update.py --force
 
-# Rebuild O/D Elo from historical games (run after season change or to fix data):
+# Full Elo rebuild (composite + O/D, both seasons, with MOV + K-decay):
+/opt/homebrew/bin/python3.11 scripts/rebuild_elo.py --all
+
+# Rebuild O/D Elo only (faster, doesn't touch composite):
 /opt/homebrew/bin/python3.11 scripts/backfill_od_elo.py --season 2025-26
+
+# Clean preseason games from database:
+/opt/homebrew/bin/python3.11 scripts/cleanup_preseason.py
 
 # Backfill missing days from NBA CDN (when NBA API is down):
 /opt/homebrew/bin/python3.11 scripts/backfill_missing_days.py
@@ -115,6 +123,24 @@ launchctl list | grep nba-betting
 ```
 
 ## Recent Changes (March 2026)
+
+**Data Cleanup & Elo Rebuild (model-affecting):**
+- **Preseason game contamination fixed**: 71 preseason games (Oct 3-19, 2025) and 73 from 2024-25 were in the DB, with 268 elo_history entries affecting team ratings. SAS had 5 fake preseason wins inflating Elo, MIA had 6 fake losses deflating it. New `scripts/cleanup_preseason.py` removes all preseason data.
+- **36 misclassified games fixed**: January 2026 games tagged as season '2024-25' corrected to '2025-26'.
+- **Full Elo rebuild from scratch**: New `scripts/rebuild_elo.py` replays all games using production logic (MOV + K-decay + O/D Elo). The old `backfill_history.py` used simple `update_elo()` without MOV or K-decay, producing inaccurate ratings.
+- **Parameter sweep confirmed**: K=15/HCA=35 remains optimal on clean data (63.8% accuracy, 0.2205 Brier), beating all 243 alternatives tested.
+- Post-rebuild: 914 regular season games (2025-26), 0 preseason contamination, Elo rankings align within 3-5 spots of actual records for most teams.
+
+**Missing Player Impact Fix:**
+- NBA API's `leaguedashplayerstats` endpoint does not return several major stars (Doncic, Tatum, Irving, Haliburton, Lillard) — confirmed missing from both Advanced and Base measure types with 546 players returned.
+- Luka Doncic (LAL, 49 GP, 35.4 MPG) manually added to player_impact using BPM from Basketball Reference (8.5) as NET_RATING proxy. Calculated impact: +17.6 (4th highest).
+- Tatum (torn Achilles, 0 GP), Irving (ACL), Haliburton (torn Achilles), Lillard (torn Achilles) confirmed inactive all season — absence baked into team Elo, no action needed.
+- Individual player stats can be fetched via `playercareerstats` endpoint with known player IDs when bulk endpoint fails.
+
+**Known Model Characteristics (post-rebuild):**
+- Charlotte Elo anomaly: Elo rank #7 (1566) but 32-31 record. Genuine model characteristic — CHA likely wins blowouts but loses close games, and MOV-weighted Elo rewards blowout wins.
+- Home spread bias: +2.76 pts (over-predicting home team). Actual home margin is +0.96 pts vs config 1.4 pts. Sweep confirms HCA=35 is still optimal despite this.
+- O/D Elo drift: Offense avg 1471, Defense avg 1529 (58-point split). Structural characteristic of O/D systems with asymmetric home advantage; total is conserved at 3000.
 
 **UI Refocus: Value Betting → Win/Loss Predictions:**
 - App reframed from "value betting tool" to "game predictions" — predictions visible immediately on app open
@@ -536,6 +562,10 @@ Negative values clamped to 0
 - ✅ **Negative impact clamping** - Bad players no longer penalize team when injured
 - ✅ **HCA recalibrated** - Reduced to 35 Elo based on actual 2025-26 data
 - ✅ **RAPTOR CSV removed** - Eliminated stale fallback causing false matches
+- ✅ **Preseason data cleanup** - Removed 144 preseason games contaminating Elo ratings
+- ✅ **Full Elo rebuild script** - `rebuild_elo.py` replays all games with MOV + K-decay (matches production)
+- ✅ **Season misclassification fix** - 36 Jan 2026 games re-tagged from 2024-25 to 2025-26
+- ✅ **Doncic player impact** - Manually added (NBA API bulk endpoint doesn't return him despite 49 GP)
 - ✅ **Elo validation analysis** - Confirmed strong correlations (r=0.96 vs pt diff)
 - ✅ **O/D Elo backfill script** - Rebuild O/D Elo by replaying historical games
 - ✅ **Offensive/Defensive Elo** - Separate O-Elo and D-Elo for better matchup modeling
@@ -568,8 +598,8 @@ Negative values clamped to 0
 | Injuries | ESPN public API | On daily_update.py run |
 | Live Game Status | ESPN scoreboard API (fallback when NBA API blocked) | On Refresh Data button |
 | Odds | The Odds API | On page load (costs API credits) |
-| Player Impact | NBA API (`leaguedashplayerstats`) | On daily_update.py run |
-| Team O/D Elo | Calculated from game history | On backfill_od_elo.py run, then daily_update.py |
+| Player Impact | NBA API (`leaguedashplayerstats`) + manual entries for missing stars | On daily_update.py run |
+| Team O/D Elo | Calculated from game history | On rebuild_elo.py or daily_update.py |
 | Team W/L Records | ESPN standings API | On Team Ratings page load (cached 1 hour) |
 
 ## Known Limitations
@@ -577,8 +607,10 @@ Negative values clamped to 0
 - Model is pre-game only (doesn't update with live scores)
 - Odds API has limited free tier (500 requests/month)
 - NBA API (`stats.nba.com`) is behind Akamai WAF that periodically tightens bot detection; `NBA_API_HEADERS` in `nba_fetcher.py` may need updating if requests start timing out again
-- After changing seasons, must run `backfill_od_elo.py` to rebuild O/D Elo ratings
+- After changing seasons, run `scripts/rebuild_elo.py --all` to rebuild all Elo ratings from scratch
 - O/D Elo predicted totals have weak game-level correlation (r=0.233) - single-game variance is too high
-- Players with 0 GP this season (season-long injuries, mid-season acquisitions) have no impact data, which is correct since their absence is already baked into team Elo
-- Some stars missing from NBA API Advanced stats endpoint entirely (Tatum, Irving, Haliburton, Lillard) - likely 0 GP this season
+- O/D Elo drift: Offense avg ~1471, Defense avg ~1529 after full season. Structural characteristic of asymmetric HCA; total conserved at 3000
+- NBA API `leaguedashplayerstats` silently drops some stars (Doncic, Tatum, Irving, Haliburton, Lillard). Doncic (49 GP) manually added; others are 0 GP injuries. Use `playercareerstats` with known player IDs for individual lookups.
+- Home spread bias of +2.76 pts (over-predicting home team). Actual home margin is +0.96 pts vs config 1.4 pts. Sweep confirms HCA=35 is still optimal despite this.
+- `backfill_history.py` is outdated — uses simple `update_elo()` without MOV or K-decay. Use `rebuild_elo.py` instead.
 - NET_RATING still has residual team-context bias even with USG% weighting
