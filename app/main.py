@@ -1,9 +1,8 @@
 """NBA Game Predictions - Streamlit Application."""
 
 import streamlit as st
-from datetime import datetime, timedelta
+from datetime import timedelta
 import pandas as pd
-import re
 
 import sys
 from pathlib import Path
@@ -13,6 +12,7 @@ from config import CURRENT_SEASON, now_ct
 from src.data.database import init_database, get_connection, get_games_by_date
 from src.models.predictor import predict_game
 from src.utils.update_status import get_last_run_info
+from src.utils.time_utils import convert_et_to_ct
 
 # Page configuration
 st.set_page_config(
@@ -37,44 +37,6 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
-
-
-def convert_et_to_ct(time_str: str) -> str:
-    """Convert Eastern Time string to Central Time."""
-    if not time_str or 'ET' not in time_str:
-        return time_str
-
-    match = re.match(r'(\d{1,2}):(\d{2})\s*(am|pm)\s*ET', time_str.strip(), re.IGNORECASE)
-    if not match:
-        return time_str
-
-    hour = int(match.group(1))
-    minute = match.group(2)
-    period = match.group(3).upper()
-
-    if period == 'PM' and hour != 12:
-        hour += 12
-    elif period == 'AM' and hour == 12:
-        hour = 0
-
-    hour -= 1
-    if hour < 0:
-        hour += 24
-
-    if hour == 0:
-        display_hour = 12
-        display_period = 'AM'
-    elif hour < 12:
-        display_hour = hour
-        display_period = 'AM'
-    elif hour == 12:
-        display_hour = 12
-        display_period = 'PM'
-    else:
-        display_hour = hour - 12
-        display_period = 'PM'
-
-    return f"{display_hour}:{minute} {display_period} CT"
 
 
 def get_accuracy_stats():
@@ -206,7 +168,7 @@ def main():
         st.stop()
 
     predictions = []
-    game_times = {}
+    game_info = {}  # game_id -> {time, status, home_score, away_score}
 
     for _, game in games_df.iterrows():
         pred = predict_game(
@@ -228,13 +190,20 @@ def main():
             game_time_et = game.get('game_time')
 
             if game_status == 'in_progress':
-                game_times[game['game_id']] = 'In Progress'
+                time_display = 'In Progress'
             elif game_status == 'final':
-                game_times[game['game_id']] = 'Final'
+                time_display = 'Final'
             elif game_time_et:
-                game_times[game['game_id']] = convert_et_to_ct(game_time_et)
+                time_display = convert_et_to_ct(game_time_et)
             else:
-                game_times[game['game_id']] = None
+                time_display = None
+
+            game_info[game['game_id']] = {
+                'time': time_display,
+                'status': game_status,
+                'home_score': game.get('home_score'),
+                'away_score': game.get('away_score'),
+            }
 
     if not predictions:
         st.info("No predictions available for this date.")
@@ -245,7 +214,9 @@ def main():
     # Model Picks table
     picks_data = []
     for pred in predictions:
-        game_time = game_times.get(pred.game_id, '-')
+        info = game_info.get(pred.game_id, {})
+        game_time = info.get('time') or '-'
+        status = info.get('status', 'scheduled')
 
         if pred.home_win_prob > 0.5:
             predicted_winner = pred.home_team
@@ -261,13 +232,31 @@ def main():
         else:
             confidence = "Low"
 
+        # Result column: start time, in-progress, or winner
+        if status == 'final':
+            home_score = info.get('home_score')
+            away_score = info.get('away_score')
+            if home_score is not None and away_score is not None:
+                if int(home_score) > int(away_score):
+                    actual_winner = pred.home_team
+                else:
+                    actual_winner = pred.away_team
+                correct = actual_winner == predicted_winner
+                result = f"{'Correct' if correct else 'Wrong'} ({actual_winner} won)"
+            else:
+                result = "Final"
+        elif status == 'in_progress':
+            result = "In Progress"
+        else:
+            result = game_time
+
         picks_data.append({
-            'Time': game_time if game_time else '-',
             'Matchup': f"{pred.away_team} @ {pred.home_team}",
             'Pick': f"{predicted_winner}",
             'Win Prob': f"{win_prob:.1%}",
             'Confidence': confidence,
             'Spread': f"{pred.home_team} {pred.predicted_spread:+.1f}" if pred.predicted_spread < 0 else f"{pred.away_team} {-pred.predicted_spread:+.1f}",
+            'Result': result,
         })
 
     picks_df = pd.DataFrame(picks_data)

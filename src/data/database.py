@@ -1,5 +1,6 @@
-"""SQLite database operations for NBA Betting Value Finder."""
+"""SQLite database operations for NBA Game Predictions."""
 
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
@@ -580,7 +581,6 @@ def upsert_player_impact(
     usg_pct: float = None,
 ):
     """Insert or update a player's impact rating."""
-    import re
     player_name_normalized = re.sub(r"[^\w\s]", "", player_name.lower().strip())
 
     with get_connection() as conn:
@@ -611,7 +611,6 @@ def upsert_player_impact(
 
 def get_player_impact_by_name(player_name: str, team_abbr: str = None) -> Optional[dict]:
     """Get player impact by name with optional team disambiguation."""
-    import re
     normalized_name = re.sub(r"[^\w\s]", "", player_name.lower().strip())
 
     with get_connection() as conn:
@@ -687,14 +686,6 @@ def get_all_player_impacts(season: str = None) -> pd.DataFrame:
                 "SELECT * FROM player_impact ORDER BY elo_impact DESC",
                 conn
             )
-
-
-def clear_player_impacts():
-    """Clear all player impact data."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM player_impact")
-        conn.commit()
 
 
 def clear_old_player_impacts(current_season: str) -> int:

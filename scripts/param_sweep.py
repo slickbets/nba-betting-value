@@ -11,14 +11,13 @@ Usage:
 import argparse
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from config import CURRENT_SEASON
+from config import CURRENT_SEASON, now_ct
 from src.models.params import EloParams
 from src.backtesting.engine import load_season_data, run_backtest
 from src.backtesting.sweep import generate_param_grid, run_sweep
@@ -190,7 +189,7 @@ def main():
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = now_ct().strftime("%Y%m%d_%H%M%S")
     output_path = output_dir / f"sweep_{timestamp}.csv"
     combined.to_csv(output_path, index=False)
     print(f"\nResults saved to {output_path}")

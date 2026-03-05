@@ -216,21 +216,3 @@ def get_team_injuries(team_abbr: str, injuries_df: pd.DataFrame) -> list[dict]:
     return result
 
 
-def get_all_injuries_by_team(injuries_df: pd.DataFrame) -> dict[str, list[dict]]:
-    """
-    Organize all injuries by team.
-
-    Args:
-        injuries_df: DataFrame from fetch_injuries_for_date()
-
-    Returns:
-        Dict mapping team abbreviation to list of injured players
-    """
-    if injuries_df.empty or "team_abbr" not in injuries_df.columns:
-        return {}
-
-    result = {}
-    for team_abbr in injuries_df["team_abbr"].dropna().unique():
-        result[team_abbr] = get_team_injuries(team_abbr, injuries_df)
-
-    return result

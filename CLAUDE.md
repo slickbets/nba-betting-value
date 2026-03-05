@@ -546,7 +546,6 @@ Negative values clamped to 0
 | Key | Purpose | Required |
 |-----|---------|----------|
 | `ODDS_API_KEY` | The Odds API for live betting odds | Optional (shown in game details) |
-| `BALLDONTLIE_API_KEY` | BallDontLie API (injuries endpoint is paid tier) | Not used currently |
 
 ## Data Sources
 

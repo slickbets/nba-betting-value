@@ -2,7 +2,7 @@
 
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -307,8 +307,8 @@ def get_historical_seasons(num_seasons: int = 3) -> list[str]:
     Returns:
         List of season strings like ["2024-25", "2023-24", "2022-23"]
     """
-    current_year = datetime.now().year
-    current_month = datetime.now().month
+    current_year = now_ct().year
+    current_month = now_ct().month
 
     # NBA season starts in October
     if current_month >= 10:

@@ -6,6 +6,7 @@ player_impact database table, auto-populated from NBA API.
 """
 
 import logging
+import re
 import sys
 from pathlib import Path
 from typing import Optional
@@ -19,7 +20,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Elo impact is pre-calculated in the database using:
-# elo_impact = NET_RATING * (MPG / 48) * 2.5
+# elo_impact = NET_RATING * (MPG / 48) * (USG% / 0.20) * 1.5
 
 # Fuzzy match threshold (0-1, higher = stricter)
 FUZZY_MATCH_THRESHOLD = 0.85
@@ -29,7 +30,6 @@ def normalize_player_name(name: str) -> str:
     """Normalize player name for matching."""
     if not name:
         return ""
-    import re
     return re.sub(r"[^\w\s]", "", name.lower().strip())
 
 
@@ -188,27 +188,3 @@ def get_injury_adjustment_for_team(
     return total_adjustment, player_details
 
 
-def format_injury_impact(player_details: list[dict]) -> str:
-    """
-    Format injury impact for display.
-
-    Args:
-        player_details: List from get_injury_adjustment_for_team()
-
-    Returns:
-        Formatted string for display
-    """
-    if not player_details:
-        return "No significant injuries"
-
-    lines = []
-    for p in player_details:
-        if abs(p["elo_impact"]) >= 5:  # Only show significant impacts
-            impact_str = f"{p['elo_impact']:+.0f} Elo"
-            status_str = p["status"]
-            lines.append(f"  {p['player_name']} ({status_str}): {impact_str}")
-
-    if not lines:
-        return "No significant injury impact"
-
-    return "\n".join(lines)

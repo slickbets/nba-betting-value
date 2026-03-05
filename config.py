@@ -1,4 +1,4 @@
-"""Configuration settings for NBA Betting Value Finder."""
+"""Configuration settings for NBA Game Predictions."""
 
 import os
 from datetime import datetime
@@ -24,7 +24,6 @@ DB_PATH = DATA_DIR / "nba_betting.db"
 
 # API Keys
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
-BALLDONTLIE_API_KEY = os.getenv("BALLDONTLIE_API_KEY", "")
 
 # Elo Parameters
 ELO_K_FACTOR = 15.0
