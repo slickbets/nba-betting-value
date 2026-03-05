@@ -1,7 +1,9 @@
-"""NBA Betting Value Finder - Streamlit Application."""
+"""NBA Game Predictions - Streamlit Application."""
 
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
+import pandas as pd
+import re
 
 import sys
 from pathlib import Path
@@ -9,10 +11,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import CURRENT_SEASON, now_ct
 from src.data.database import init_database, get_connection, get_games_by_date
+from src.models.predictor import predict_game
+from src.utils.update_status import get_last_run_info
 
 # Page configuration
 st.set_page_config(
-    page_title="NBA Betting Value Finder",
+    page_title="NBA Game Predictions",
     page_icon="🏀",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -31,82 +35,54 @@ st.markdown("""
         color: #666;
         margin-bottom: 2rem;
     }
-    .metric-card {
-        background-color: #f0f2f6;
-        border-radius: 10px;
-        padding: 1rem;
-        text-align: center;
-    }
-    .value-positive {
-        color: #28a745;
-        font-weight: bold;
-    }
-    .value-negative {
-        color: #dc3545;
-        font-weight: bold;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 
-def main():
-    # Sidebar
-    with st.sidebar:
-        st.title("🏀 NBA Value Finder")
-        st.markdown("---")
+def convert_et_to_ct(time_str: str) -> str:
+    """Convert Eastern Time string to Central Time."""
+    if not time_str or 'ET' not in time_str:
+        return time_str
 
-        st.markdown(f"**Season:** {CURRENT_SEASON}")
-        st.markdown(f"**Date:** {now_ct().strftime('%B %d, %Y')}")
+    match = re.match(r'(\d{1,2}):(\d{2})\s*(am|pm)\s*ET', time_str.strip(), re.IGNORECASE)
+    if not match:
+        return time_str
 
-        st.markdown("---")
-        st.markdown("### Navigation")
-        st.markdown("""
-        - **Today's Bets** - Find value bets for today's games
-        - **Team Ratings** - Current Elo rankings
-        - **Model Accuracy** - Track prediction performance
-        """)
+    hour = int(match.group(1))
+    minute = match.group(2)
+    period = match.group(3).upper()
 
-        st.markdown("---")
-        st.markdown("### Settings")
+    if period == 'PM' and hour != 12:
+        hour += 12
+    elif period == 'AM' and hour == 12:
+        hour = 0
 
-        min_edge = st.slider(
-            "Minimum Edge %",
-            min_value=1.0,
-            max_value=15.0,
-            value=3.0,
-            step=0.5,
-            help="Only show bets with at least this much edge"
-        )
-        st.session_state['min_edge'] = min_edge
+    hour -= 1
+    if hour < 0:
+        hour += 24
 
-        st.markdown("---")
-        st.markdown(
-            "Built with [Streamlit](https://streamlit.io) | "
-            "Data: [nba_api](https://github.com/swar/nba_api)"
-        )
+    if hour == 0:
+        display_hour = 12
+        display_period = 'AM'
+    elif hour < 12:
+        display_hour = hour
+        display_period = 'AM'
+    elif hour == 12:
+        display_hour = 12
+        display_period = 'PM'
+    else:
+        display_hour = hour - 12
+        display_period = 'PM'
 
-    # Main content
-    st.markdown('<p class="main-header">NBA Betting Value Finder</p>', unsafe_allow_html=True)
-    st.markdown(
-        '<p class="sub-header">'
-        'Find value bets by comparing Elo-based predictions to sportsbook odds'
-        '</p>',
-        unsafe_allow_html=True
-    )
+    return f"{display_hour}:{minute} {display_period} CT"
 
-    # Load real stats
+
+def get_accuracy_stats():
+    """Get season and recent accuracy stats."""
     try:
-        init_database()
-
-        # Today's games count
-        today_str = now_ct().strftime("%Y-%m-%d")
-        today_games = get_games_by_date(today_str)
-        today_count = len(today_games) if not today_games.empty else 0
-
-        # Season model accuracy
         with get_connection() as conn:
-            import pandas as pd
-            accuracy_df = pd.read_sql_query("""
+            # Season accuracy
+            season_df = pd.read_sql_query("""
                 SELECT
                     COUNT(*) as total,
                     SUM(CASE
@@ -121,128 +97,181 @@ def main():
                 AND predicted_home_win_prob IS NOT NULL
             """, conn)
 
-        total_games = int(accuracy_df['total'].iloc[0])
-        correct_picks = int(accuracy_df['correct'].iloc[0])
-        accuracy_pct = (correct_picks / total_games * 100) if total_games > 0 else 0
+            # Last 7 days accuracy
+            seven_days_ago = (now_ct() - timedelta(days=7)).strftime("%Y-%m-%d")
+            recent_df = pd.read_sql_query("""
+                SELECT
+                    COUNT(*) as total,
+                    SUM(CASE
+                        WHEN (predicted_home_win_prob > 0.5 AND home_score > away_score)
+                          OR (predicted_home_win_prob < 0.5 AND away_score > home_score)
+                        THEN 1 ELSE 0
+                    END) as correct
+                FROM games
+                WHERE status = 'final'
+                AND home_score IS NOT NULL
+                AND away_score IS NOT NULL
+                AND predicted_home_win_prob IS NOT NULL
+                AND game_date >= ?
+            """, conn, params=[seven_days_ago])
 
+        season_total = int(season_df['total'].iloc[0])
+        season_correct = int(season_df['correct'].iloc[0])
+        recent_total = int(recent_df['total'].iloc[0])
+        recent_correct = int(recent_df['correct'].iloc[0])
+
+        return season_total, season_correct, recent_total, recent_correct
+    except Exception:
+        return 0, 0, 0, 0
+
+
+def main():
+    # Sidebar
+    with st.sidebar:
+        st.title("🏀 NBA Predictions")
+        st.markdown("---")
+
+        st.markdown(f"**Season:** {CURRENT_SEASON}")
+        st.markdown(f"**Date:** {now_ct().strftime('%B %d, %Y')}")
+
+        st.markdown("---")
+        st.markdown("### Navigation")
+        st.markdown("""
+        - **Home** - Today's predictions
+        - **Game Details** - Elo breakdowns & odds
+        - **Model Accuracy** - Prediction tracking
+        - **Team Ratings** - Elo rankings
+        """)
+
+        st.markdown("---")
+        st.markdown(
+            "Built with [Streamlit](https://streamlit.io) | "
+            "Data: [nba_api](https://github.com/swar/nba_api)"
+        )
+
+    # Main content
+    st.markdown('<p class="main-header">NBA Game Predictions</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p class="sub-header">'
+        'Elo-based win probability predictions for today\'s NBA games'
+        '</p>',
+        unsafe_allow_html=True
+    )
+
+    # Daily update status
+    last_run = get_last_run_info()
+    if last_run['ran_today']:
+        if last_run['last_run_time']:
+            st.success(f"Model updated today at {last_run['last_run_time']}")
+        else:
+            st.success("Model updated today")
+    elif last_run['last_run_date']:
+        st.warning(f"Model last updated: {last_run['last_run_date']} — Run `daily_update.py` for fresh predictions")
+    else:
+        st.error("Daily update has never run — Run `python scripts/daily_update.py` to initialize")
+
+    # Initialize database
+    try:
+        init_database()
     except Exception as e:
-        print(f"Error loading stats: {e}")
-        today_count = 0
-        total_games = 0
-        correct_picks = 0
-        accuracy_pct = 0
+        st.error(f"Database error: {e}")
+        st.stop()
 
-    # Quick stats row
-    col1, col2, col3 = st.columns(3)
+    # Accuracy summary
+    season_total, season_correct, recent_total, recent_correct = get_accuracy_stats()
 
-    with col1:
-        st.metric(
-            label="Today's Games",
-            value=today_count,
-            help="Number of games scheduled today"
-        )
+    if season_total > 0:
+        season_pct = season_correct / season_total * 100
+        accuracy_parts = [f"**Season:** {season_pct:.1f}% accurate ({season_correct}/{season_total})"]
+        if recent_total > 0:
+            recent_pct = recent_correct / recent_total * 100
+            accuracy_parts.append(f"**Last 7 days:** {recent_pct:.1f}% ({recent_correct}/{recent_total})")
+        st.markdown(" | ".join(accuracy_parts))
 
-    with col2:
-        st.metric(
-            label="Model Accuracy",
-            value=f"{accuracy_pct:.1f}%" if total_games > 0 else "--",
-            help="Percentage of correct winner predictions this season"
-        )
-
-    with col3:
-        st.metric(
-            label="Correct Picks",
-            value=f"{correct_picks}/{total_games}" if total_games > 0 else "--",
-            help="Total correct picks out of games with predictions"
-        )
+    # Date selector
+    selected_date = st.date_input(
+        "Select Date",
+        value=now_ct().date(),
+        help="Choose a date to view predictions"
+    )
+    date_str = selected_date.strftime("%Y-%m-%d")
 
     st.markdown("---")
 
-    # Getting started section
-    st.markdown("### Getting Started")
+    # Load games and predictions
+    games_df = get_games_by_date(date_str)
 
-    st.markdown("""
-    Welcome to the NBA Betting Value Finder! This tool helps you identify potentially
-    profitable betting opportunities by:
+    if games_df.empty:
+        st.warning(f"No games found for {selected_date.strftime('%B %d, %Y')}.")
+        st.stop()
 
-    1. **Calculating Elo ratings** for all NBA teams based on historical performance
-    2. **Predicting win probabilities** for upcoming games
-    3. **Comparing to sportsbook odds** to find edges
+    predictions = []
+    game_times = {}
 
-    Use the navigation in the sidebar to explore different features.
-    """)
+    for _, game in games_df.iterrows():
+        pred = predict_game(
+            home_team_id=game['home_team_id'],
+            away_team_id=game['away_team_id'],
+            home_elo=game.get('home_elo'),
+            away_elo=game.get('away_elo'),
+            game_id=game['game_id'],
+            game_date=date_str,
+            apply_injuries=True,
+            home_offense_elo=game.get('home_offense_elo'),
+            home_defense_elo=game.get('home_defense_elo'),
+            away_offense_elo=game.get('away_offense_elo'),
+            away_defense_elo=game.get('away_defense_elo'),
+        )
+        if pred:
+            predictions.append(pred)
+            game_status = game.get('status', 'scheduled')
+            game_time_et = game.get('game_time')
 
-    # Setup instructions
-    with st.expander("📋 First-time Setup"):
-        st.markdown("""
-        **1. Initialize the database:**
-        ```bash
-        python scripts/init_db.py
-        ```
+            if game_status == 'in_progress':
+                game_times[game['game_id']] = 'In Progress'
+            elif game_status == 'final':
+                game_times[game['game_id']] = 'Final'
+            elif game_time_et:
+                game_times[game['game_id']] = convert_et_to_ct(game_time_et)
+            else:
+                game_times[game['game_id']] = None
 
-        **2. Backfill historical data and calculate Elo ratings:**
-        ```bash
-        python scripts/backfill_history.py
-        ```
+    if not predictions:
+        st.info("No predictions available for this date.")
+        st.stop()
 
-        **3. Configure your Odds API key:**
-        - Sign up at [The Odds API](https://the-odds-api.com)
-        - Add your key to the `.env` file:
-        ```
-        ODDS_API_KEY=your_key_here
-        ```
+    st.markdown(f"### {len(predictions)} Games")
 
-        **4. You're ready!** Navigate to "Today's Bets" to find value.
-        """)
+    # Model Picks table
+    picks_data = []
+    for pred in predictions:
+        game_time = game_times.get(pred.game_id, '-')
 
-    # Value betting explanation
-    with st.expander("📚 What is Value Betting?"):
-        st.markdown("""
-        **Value betting** is a strategy where you bet when you believe the true
-        probability of an outcome is higher than what the odds imply.
+        if pred.home_win_prob > 0.5:
+            predicted_winner = pred.home_team
+            win_prob = pred.home_win_prob
+        else:
+            predicted_winner = pred.away_team
+            win_prob = pred.away_win_prob
 
-        **Example:**
-        - Your model says Team A has a 60% chance to win
-        - The sportsbook offers +120 odds (implied probability: 45.5%)
-        - Your **edge** is 60% - 45.5% = **14.5%**
-        - This is a value bet because you're getting better odds than the true probability
+        if win_prob >= 0.65:
+            confidence = "High"
+        elif win_prob >= 0.55:
+            confidence = "Medium"
+        else:
+            confidence = "Low"
 
-        **How this app calculates value:**
-        1. We use Elo ratings to estimate each team's strength
-        2. We convert Elo differences to win probabilities
-        3. We compare our probabilities to sportsbook odds
-        4. We flag bets where our model gives > 3% edge
+        picks_data.append({
+            'Time': game_time if game_time else '-',
+            'Matchup': f"{pred.away_team} @ {pred.home_team}",
+            'Pick': f"{predicted_winner}",
+            'Win Prob': f"{win_prob:.1%}",
+            'Confidence': confidence,
+            'Spread': f"{pred.home_team} {pred.predicted_spread:+.1f}" if pred.predicted_spread < 0 else f"{pred.away_team} {-pred.predicted_spread:+.1f}",
+        })
 
-        **Important:** No model is perfect. Use this as one input in your decision-making,
-        not as a guaranteed winning strategy.
-        """)
-
-    # Elo explanation
-    with st.expander("📊 How Elo Ratings Work"):
-        st.markdown("""
-        **Elo** is a rating system originally designed for chess that we've adapted for NBA.
-
-        **Key concepts:**
-        - Every team starts at **1500** Elo points
-        - After each game, the winner gains points and loser loses points
-        - The amount of points exchanged depends on the **expected outcome**
-        - Beating a strong team = more points gained
-        - Losing to a weak team = more points lost
-
-        **Converting Elo to Win Probability:**
-        ```
-        Win Probability = 1 / (1 + 10^((Opponent_Elo - Your_Elo) / 400))
-        ```
-
-        **Home Court Advantage:**
-        We add **35 Elo points** to the home team to account for home court advantage
-        (roughly equivalent to a 1.4 point spread, based on 2025-26 season data).
-
-        **Converting to Spread:**
-        We estimate point spread as: `Elo Difference / 25`
-
-        So a team with +125 Elo advantage (after home court) would be favored by ~5 points.
-        """)
+    picks_df = pd.DataFrame(picks_data)
+    st.dataframe(picks_df, use_container_width=True, hide_index=True)
 
 
 if __name__ == "__main__":

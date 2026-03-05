@@ -1,18 +1,19 @@
-# NBA Betting Value Finder
+# NBA Game Predictions
 
-A Python application that finds value bets by comparing Elo-based predictions to sportsbook odds.
+A Python application that predicts NBA game outcomes using an Elo rating system. Shows win probabilities, predicted spreads, and totals for each game, with injury and rest adjustments.
 
 ## Features
 
-- **Elo Rating System**: Track team strength using Elo ratings updated after each game
-- **Win Probability Predictions**: Convert Elo differences to win probabilities and point spreads
-- **Live Odds Integration**: Fetch current odds from major sportsbooks via The Odds API
-- **Value Bet Detection**: Identify bets where model probability exceeds implied odds probability
-- **Bet Tracking**: Log bets, track results, and monitor performance over time
+- **Elo Rating System**: Track team strength using composite, offensive, and defensive Elo ratings
+- **Win Probability Predictions**: Convert Elo differences to win probabilities, point spreads, and predicted totals
+- **Injury Adjustments**: Adjust predictions based on injured players (USG%-weighted impact ratings for 320+ players)
+- **Rest/B2B Factors**: Back-to-back penalty and rest advantage adjustments
+- **Model Accuracy Tracking**: Pick accuracy, spread error, confidence analysis over time
+- **Live Odds Display**: Fetch current sportsbook odds for comparison (optional, via The Odds API)
 - **Backtesting Engine**: Replay full seasons to measure model accuracy under any parameter set
 - **Parameter Optimization**: Parallel sweep tool finds optimal Elo parameters across the season
 - **Regression Tests**: Automated accuracy thresholds catch model regressions
-- **Interactive Dashboard**: Streamlit UI for exploring predictions and managing bets
+- **Interactive Dashboard**: Streamlit UI with predictions visible immediately on app open
 
 ## Quick Start
 
@@ -25,7 +26,7 @@ pip install -r requirements.txt
 
 ### 2. Configure API Key (Optional)
 
-Sign up at [The Odds API](https://the-odds-api.com) for live odds data (free tier: 500 requests/month).
+Sign up at [The Odds API](https://the-odds-api.com) for live odds display in game details (free tier: 500 requests/month).
 
 Add your key to `.env`:
 ```
@@ -61,11 +62,11 @@ Open http://localhost:8501 in your browser.
 ```
 nba-betting-value/
 ├── app/                    # Streamlit UI
-│   ├── main.py            # Main dashboard (games count, model accuracy)
+│   ├── main.py            # Predictions landing page (picks + accuracy)
 │   └── pages/             # Multi-page app
-│       ├── 1_Today_Bets.py    # Value bets & model picks
-│       ├── 4_Team_Ratings.py  # Elo rankings
-│       └── 5_Model_Accuracy.py # Prediction tracking
+│       ├── 1_Game_Details.py   # Elo breakdowns, injuries, rest, odds
+│       ├── 2_Model_Accuracy.py # Prediction tracking
+│       └── 3_Team_Ratings.py   # Elo rankings
 │
 ├── src/                    # Core logic
 │   ├── data/              # Data fetching & storage
@@ -79,7 +80,7 @@ nba-betting-value/
 │   ├── backtesting/       # Model evaluation
 │   │   ├── engine.py         # Backtest engine (replays season)
 │   │   └── sweep.py          # Parameter grid + parallel sweep
-│   └── betting/           # Betting utilities
+│   └── betting/           # Odds utilities
 │       ├── odds_converter.py
 │       └── value_finder.py
 │
@@ -104,6 +105,7 @@ Every team starts at 1500 Elo. After each game:
 - Winner gains points, loser loses points
 - Amount exchanged depends on expected outcome
 - Beating a strong team = more points gained
+- Margin of victory matters (blowouts worth more)
 - Home court adds 35 Elo points (~1.4 point spread advantage)
 
 ### Win Probability
@@ -122,19 +124,12 @@ Spread = Elo_Difference / 25
 
 A 125 Elo advantage (100 base + 25 from skill) equals a 5-point spread.
 
-### Value Betting
+### Offensive/Defensive Elo
 
-A bet has value when:
+Each team has separate O-Elo and D-Elo ratings, enabling predicted totals:
 ```
-Model_Probability > Implied_Probability_from_Odds
+Expected_Score = League_Avg + (Offense_Elo - Opponent_Defense_Elo) / 25
 ```
-
-For example:
-- Model says Team A has 60% win chance
-- Sportsbook offers +120 odds (45.5% implied)
-- Edge = 60% - 45.5% = 14.5%
-
-The app flags bets with >3% edge.
 
 ## Daily Usage
 
@@ -149,16 +144,15 @@ This:
 2. Recalculates Elo ratings
 3. Fetches today's games
 4. Generates predictions
-5. Fetches current odds
-6. Auto-settles completed bets
+5. Updates player impact ratings
 
-### Find Value Bets
+### View Predictions
 
 1. Open the app: `streamlit run app/main.py`
-2. Go to "Today's Bets" page
-3. Review games with positive edge
-4. Log bets you place in "Bet Log"
-5. Track performance in "Performance" page
+2. Main page shows today's model picks with win probabilities
+3. "Game Details" page shows Elo breakdowns, injuries, rest factors, and live odds
+4. "Model Accuracy" page tracks prediction performance
+5. "Team Ratings" page shows current Elo rankings
 
 ## Configuration
 
@@ -169,11 +163,6 @@ Edit `config.py` to adjust:
 ELO_K_FACTOR = 15.0           # Rating volatility (optimized via parameter sweep)
 ELO_HOME_ADVANTAGE = 35.0     # Home court bonus
 ELO_INITIAL_RATING = 1500.0   # Starting rating
-
-# Value Bet Thresholds
-MIN_EDGE_PERCENT = 3.0        # Minimum edge to flag
-MIN_ODDS = -300               # Don't bet heavy favorites
-MAX_ODDS = 500                # Don't bet extreme underdogs
 ```
 
 ## Running Tests
@@ -196,28 +185,16 @@ pytest tests/ -v
 ### Completed
 - [x] Elo rating system with home court advantage
 - [x] Win probability and spread predictions
-- [x] Live odds integration (The Odds API)
-- [x] Value bet detection with Kelly sizing
-- [x] Streamlit dashboard with live model accuracy metrics
-- [x] **Player injury adjustments** - Adjust Elo based on injured players using auto-calculated impact ratings
-- [x] **Offensive/Defensive Elo** - Separate O-Elo and D-Elo for matchup modeling and predicted totals
-- [x] **Auto player impact** - NBA API-sourced ratings for 300+ players (NET_RATING × MPG × USG%)
-- [x] **Back-to-back / rest day factors** - B2B penalty and rest advantage adjustments
-- [x] **Margin-of-victory Elo** - Blowout wins worth more than close games
-- [x] **K-factor decay** - Higher K early season for faster calibration
-- [x] **Model accuracy tracking** - Pick accuracy, spread error, confidence analysis
-- [x] **ESPN scoreboard fallback** - Refresh button works on cloud deployments where NBA API is blocked
-- [x] **O/D Elo home advantage fix** - Was double the correct value; now derived from config
-- [x] **DST-aware timezone** - Correct Central Time during daylight saving
-- [x] **Structured logging** - All print() calls converted to Python logging module
-- [x] **Dynamic league avg score** - Auto-updated from DB at runtime; no more manual config edits as PPG drifts
-- [x] **Backtesting engine** - Replay full seasons to measure model accuracy under any parameter set
-- [x] **Parameter sweep optimization** - Found optimal K-factor params, improved accuracy 61.7% → 63.1%
-- [x] **Model regression tests** - Automated thresholds prevent accuracy drops (62% min, 0.23 Brier max)
-- [x] **NBA CDN backfill** - Recover from NBA API outages using `cdn.nba.com` schedule data
-
-### Up Next
-- [ ] **Spread/total value betting** - Find value on spreads and totals (not just moneyline)
+- [x] Offensive/Defensive Elo with predicted totals
+- [x] Player injury adjustments (USG%-weighted impact ratings)
+- [x] Back-to-back / rest day factors
+- [x] Margin-of-victory Elo with K-factor decay
+- [x] Model accuracy tracking (pick accuracy, spread error, confidence analysis)
+- [x] Backtesting engine and parameter sweep optimization
+- [x] Model regression tests with automated thresholds
+- [x] ESPN scoreboard fallback for cloud deployments
+- [x] NBA CDN backfill for API outages
+- [x] Predictions-focused UI with immediate visibility
 
 ### Future Ideas
 - [ ] Historical injury impact analysis (backtest accuracy)

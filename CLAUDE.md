@@ -1,15 +1,16 @@
-# NBA Betting Value Finder - Project Context
+# NBA Game Predictions - Project Context
 
 ## What This Project Does
-Finds value bets by comparing Elo-based win probability predictions to sportsbook odds. If our model says a team has a 60% chance to win but the odds imply 45%, that's a value bet.
+Predicts NBA game outcomes using an Elo rating system. Shows win probabilities, predicted spreads, and totals for each game, with injury and rest adjustments. Tracks model accuracy over time.
 
 ## Architecture
 
 ```
 app/                    → Streamlit UI (main.py + pages/)
-  pages/1_Today_Bets.py  → Main UI for finding today's value bets
-  pages/4_Team_Ratings.py → Team Elo rankings
-  pages/5_Model_Accuracy.py → Model prediction tracking
+  main.py                → Predictions landing page (today's picks + accuracy)
+  pages/1_Game_Details.py → Detailed Elo breakdowns, injuries, rest, odds
+  pages/2_Model_Accuracy.py → Model prediction tracking
+  pages/3_Team_Ratings.py → Team Elo rankings
   pages/.2_Bet_Log.py    → (hidden) Bet tracking
   pages/.3_Performance.py → (hidden) Bet performance
 src/data/               → Data fetching (NBA API, ESPN, odds, injuries)
@@ -35,8 +36,10 @@ config.py               → All configuration constants + now_ct() timezone help
 | `src/data/nba_fetcher.py` | Fetches games/scores/player stats from NBA API (+ ESPN scoreboard fallback) |
 | `src/data/odds_fetcher.py` | Fetches live odds from The Odds API |
 | `src/betting/value_finder.py` | Identifies value betting opportunities |
-| `app/pages/1_Today_Bets.py` | Main UI for finding today's value bets |
-| `app/pages/5_Model_Accuracy.py` | Track model prediction accuracy |
+| `app/main.py` | Predictions landing page (today's picks + accuracy summary) |
+| `app/pages/1_Game_Details.py` | Detailed game view (Elo, injuries, rest, odds) |
+| `app/pages/2_Model_Accuracy.py` | Track model prediction accuracy |
+| `app/pages/3_Team_Ratings.py` | Team Elo rankings |
 | `scripts/daily_update.py` | Daily refresh script (results, Elo, predictions, odds, player impact) |
 | `scripts/backfill_od_elo.py` | Rebuild O/D Elo by replaying all season games |
 | `scripts/backfill_missing_days.py` | Backfill games/predictions/Elo from NBA CDN when NBA API is down |
@@ -110,7 +113,18 @@ launchctl load ~/Library/LaunchAgents/com.nba-betting-value.daily-update.plist
 launchctl list | grep nba-betting
 ```
 
-## Recent Changes (February 2026)
+## Recent Changes (March 2026)
+
+**UI Refocus: Value Betting → Win/Loss Predictions:**
+- App reframed from "value betting tool" to "game predictions" — predictions visible immediately on app open
+- `app/main.py`: Rewritten as predictions landing page with date picker, inline accuracy summary (season + last 7 days), and model picks table
+- `app/pages/1_Today_Bets.py` → `app/pages/1_Game_Details.py`: Removed value bets section (edge calculations, EV metrics, Kelly sizing), model picks section (moved to main). Kept: all game predictions table, game detail expanders with Elo/injuries/rest/odds, refresh button
+- `app/pages/5_Model_Accuracy.py` → `app/pages/2_Model_Accuracy.py`: Promoted in nav order
+- `app/pages/4_Team_Ratings.py` → `app/pages/3_Team_Ratings.py`: Renumbered
+- Removed from UI: min edge slider, "What is Value Betting?" expander, "First-time Setup" expander, "How Elo Ratings Work" expander
+- Backend unchanged: `src/betting/`, `src/data/odds_fetcher.py`, all scripts/tests still work
+
+## Earlier Changes (February 2026)
 
 **NBA API Headers Fix (Akamai WAF):**
 - `stats.nba.com` started timing out ~2/12 — Akamai tightened bot detection on NBA's CDN
@@ -195,7 +209,7 @@ launchctl list | grep nba-betting
 
 7. **Added logging to bare except blocks:**
    - 3 silent `except Exception` blocks now log the error
-   - Files: `app/main.py`, `app/pages/1_Today_Bets.py`, `src/models/player_impact.py`
+   - Files: `app/main.py`, `app/pages/1_Game_Details.py`, `src/models/player_impact.py`
 
 8. **O/D Elo test coverage:**
    - Added `TestODElo` class with 9 tests to `tests/test_elo.py`
@@ -226,8 +240,8 @@ launchctl list | grep nba-betting
 - `datetime.now()` returns UTC on Railway, causing the app to default to the wrong date after 6 PM CT
 - Added `now_ct()` helper in `config.py` that returns current time in Central Time
 - All `datetime.now()` calls in app pages and scripts replaced with `now_ct()`
-- Affects: Today's Bets date picker, main page date display, Model Accuracy date ranges, daily_update.py
-- Files: `config.py`, `app/main.py`, `app/pages/1_Today_Bets.py`, `app/pages/5_Model_Accuracy.py`, `scripts/daily_update.py`, `src/data/nba_fetcher.py`
+- Affects: Predictions page date picker, main page date display, Model Accuracy date ranges, daily_update.py
+- Files: `config.py`, `app/main.py`, `app/pages/1_Game_Details.py`, `app/pages/2_Model_Accuracy.py`, `scripts/daily_update.py`, `src/data/nba_fetcher.py`
 
 **Main Page Dashboard Metrics:**
 - Replaced hardcoded placeholder dashes with live data from database
@@ -249,7 +263,7 @@ launchctl list | grep nba-betting
 - Flow: Try NBA API first → if empty, fetch from ESPN → match to DB games by team abbreviation → update statuses/scores
 - ESPN endpoint: `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=YYYYMMDD`
 - Includes ESPN-to-NBA abbreviation mapping for known differences (GS→GSW, SA→SAS, NY→NYK, NO→NOP, UTAH→UTA, WSH→WAS)
-- Files: `src/data/nba_fetcher.py` (`fetch_scoreboard_espn()`), `app/pages/1_Today_Bets.py`
+- Files: `src/data/nba_fetcher.py` (`fetch_scoreboard_espn()`), `app/pages/1_Game_Details.py`
 
 ## Earlier Changes (Late January 2026)
 
@@ -372,25 +386,19 @@ launchctl list | grep nba-betting
 - Added `game_time` column to games database table
 - Displays game start times in Central Time (converted from ET)
 - Shows "In Progress" for live games, "Final" for completed games
-- Time displayed in Value Bets table, All Game Predictions table, and Game Details expanders
-- Files: `src/data/database.py`, `src/data/nba_fetcher.py`, `app/pages/1_Today_Bets.py`
-
-**Hide Started Games Filter:**
-- Added checkbox to hide in-progress and final games from Value Bets section
-- Enabled by default (since you can't bet on started games)
-- Only affects Value Bets table, not All Game Predictions
-- File: `app/pages/1_Today_Bets.py`
+- Time displayed in All Game Predictions table, and Game Details expanders
+- Files: `src/data/database.py`, `src/data/nba_fetcher.py`, `app/pages/1_Game_Details.py`
 
 **Live Refresh for Game Status:**
 - "Refresh Data" button fetches fresh game data (NBA API locally, ESPN fallback on cloud)
 - Updates game statuses (scheduled → in_progress → final) in real-time
 - No longer requires running daily_update.py to see status changes
-- File: `app/pages/1_Today_Bets.py`
+- File: `app/pages/1_Game_Details.py`
 
 **Model Accuracy Page Improvements:**
 - "When Picking Team to Win/Lose" tables now show data with fewer games
 - Dynamic threshold: shows all teams when data is limited, filters to 3+ games when plentiful
-- File: `app/pages/5_Model_Accuracy.py`
+- File: `app/pages/2_Model_Accuracy.py`
 
 **Elo Model Improvements (Phase 1):**
 - Enabled Margin of Victory (MOV) Elo - blowout wins now worth more than close games
@@ -404,20 +412,18 @@ launchctl list | grep nba-betting
 - Added rest advantage: +5 Elo for 2 days rest, +8 Elo for 3+ days
 - Rest adjustments applied at prediction time (not stored in team Elo)
 - UI shows B2B alerts, rest columns in predictions table, rest details in game expanders
-- Files: `src/models/rest_factor.py` (new), `src/models/predictor.py`, `src/data/database.py`, `app/pages/1_Today_Bets.py`
+- Files: `src/models/rest_factor.py` (new), `src/models/predictor.py`, `src/data/database.py`, `app/pages/1_Game_Details.py`
 
 **Daily Update Status Indicator:**
 - Shows when daily update last ran at top of Today's Bets page
 - Green checkmark if ran today (with time), warning if outdated, error if never ran
 - Timestamp now stored with full date and time in `data/.last_daily_update`
-- Files: `src/utils/update_status.py` (new), `scripts/daily_update.py`, `app/pages/1_Today_Bets.py`
+- Files: `src/utils/update_status.py` (new), `scripts/daily_update.py`, `app/pages/1_Game_Details.py`
 
 **Model Picks (Win/Loss) Section:**
-- New section on Today's Bets page showing straight win/loss predictions
+- Main landing page shows straight win/loss predictions for each game
 - Displays: Time, Matchup, Predicted Winner, Win Probability, Confidence, Spread
-- Separate from Value Bets (which shows edge over sportsbook odds)
-- Clarifies difference: Value Bets = mispriced odds, Model Picks = who model thinks will win
-- File: `app/pages/1_Today_Bets.py`
+- File: `app/main.py`
 
 ## Recent Changes (January 2025)
 
@@ -428,7 +434,7 @@ launchctl list | grep nba-betting
 - File: `src/data/injury_fetcher.py`
 
 **Model Accuracy Page Added:**
-- New page: `app/pages/5_Model_Accuracy.py`
+- Page: `app/pages/2_Model_Accuracy.py`
 - Tracks pick accuracy (% correct winner predictions)
 - Tracks spread error (how far off predicted spreads are)
 - Accuracy by confidence level, by team, over time
@@ -499,10 +505,8 @@ Negative values clamped to 0
 
 ## Current Priorities (from README Roadmap)
 
-### Up Next
-1. **Spread/total value betting** - Find value on spreads and totals (not just moneyline)
-
 ### Recently Completed
+- ✅ **UI refocus to predictions** - Removed value betting UI, main page now shows model picks immediately
 - ✅ **NBA API headers fix** - Akamai WAF required browser-like headers; added `NBA_API_HEADERS` to all `nba_api` calls
 - ✅ **NBA CDN backfill script** - Recover from NBA API outages using `cdn.nba.com` schedule data
 - ✅ **Backtesting engine & parameter sweep** - Replay seasons, measure accuracy, optimize params in parallel
@@ -541,7 +545,7 @@ Negative values clamped to 0
 
 | Key | Purpose | Required |
 |-----|---------|----------|
-| `ODDS_API_KEY` | The Odds API for live betting odds | Optional (but needed for value bets) |
+| `ODDS_API_KEY` | The Odds API for live betting odds | Optional (shown in game details) |
 | `BALLDONTLIE_API_KEY` | BallDontLie API (injuries endpoint is paid tier) | Not used currently |
 
 ## Data Sources
@@ -558,7 +562,6 @@ Negative values clamped to 0
 ## Known Limitations
 
 - Model is pre-game only (doesn't update with live scores)
-- Only finds value on moneyline bets (spreads/totals not yet implemented)
 - Odds API has limited free tier (500 requests/month)
 - NBA API (`stats.nba.com`) is behind Akamai WAF that periodically tightens bot detection; `NBA_API_HEADERS` in `nba_fetcher.py` may need updating if requests start timing out again
 - After changing seasons, must run `backfill_od_elo.py` to rebuild O/D Elo ratings

@@ -1,4 +1,4 @@
-"""Today's Value Bets page."""
+"""Game Details page - Elo breakdowns, injuries, rest factors, and live odds."""
 
 import streamlit as st
 from datetime import datetime
@@ -12,18 +12,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
 def convert_et_to_ct(time_str: str) -> str:
-    """Convert Eastern Time string to Central Time.
-
-    Args:
-        time_str: Time string like "7:00 pm ET"
-
-    Returns:
-        Time string like "6:00 PM CT"
-    """
+    """Convert Eastern Time string to Central Time."""
     if not time_str or 'ET' not in time_str:
         return time_str
 
-    # Parse the time (e.g., "7:00 pm ET")
     match = re.match(r'(\d{1,2}):(\d{2})\s*(am|pm)\s*ET', time_str.strip(), re.IGNORECASE)
     if not match:
         return time_str
@@ -32,18 +24,15 @@ def convert_et_to_ct(time_str: str) -> str:
     minute = match.group(2)
     period = match.group(3).upper()
 
-    # Convert to 24-hour for easier math
     if period == 'PM' and hour != 12:
         hour += 12
     elif period == 'AM' and hour == 12:
         hour = 0
 
-    # Subtract 1 hour for CT
     hour -= 1
     if hour < 0:
         hour += 24
 
-    # Convert back to 12-hour format
     if hour == 0:
         display_hour = 12
         display_period = 'AM'
@@ -59,42 +48,32 @@ def convert_et_to_ct(time_str: str) -> str:
 
     return f"{display_hour}:{minute} {display_period} CT"
 
-from config import MIN_EDGE_PERCENT, ODDS_API_KEY, CURRENT_SEASON, now_ct
+from config import ODDS_API_KEY, CURRENT_SEASON, now_ct
 from src.data.database import get_games_by_date, init_database, upsert_game
 from src.data.nba_fetcher import fetch_games_by_date, process_scoreboard_for_db, fetch_scoreboard_espn
 from src.utils.update_status import get_last_run_info
-from src.data.odds_fetcher import get_current_odds, get_odds_for_game
+from src.data.odds_fetcher import get_current_odds
 from src.models.predictor import predict_game, predictions_to_dataframe, clear_injuries_cache
-from src.betting.value_finder import (
-    find_value_bets_for_game,
-    value_bets_to_dataframe,
-    filter_best_odds,
-    get_value_summary,
-)
-from src.betting.odds_converter import format_american_odds, format_probability
 
-st.set_page_config(page_title="Today's Bets", page_icon="💰", layout="wide")
+st.set_page_config(page_title="Game Details", page_icon="🏀", layout="wide")
 
-st.title("💰 Today's Value Bets")
-st.markdown("Find betting opportunities where our model sees edge over the sportsbooks.")
+st.title("🏀 Game Details")
+st.markdown("Detailed Elo breakdowns, injury impacts, rest factors, and sportsbook odds.")
 
 # Daily update status indicator
 last_run = get_last_run_info()
 if last_run['ran_today']:
     if last_run['last_run_time']:
-        st.success(f"✅ Model updated today at {last_run['last_run_time']}")
+        st.success(f"Model updated today at {last_run['last_run_time']}")
     else:
-        st.success(f"✅ Model updated today")
+        st.success("Model updated today")
 elif last_run['last_run_date']:
-    st.warning(f"⚠️ Model last updated: {last_run['last_run_date']} — Run `daily_update.py` for fresh predictions")
+    st.warning(f"Model last updated: {last_run['last_run_date']} — Run `daily_update.py` for fresh predictions")
 else:
-    st.error("❌ Daily update has never run — Run `python scripts/daily_update.py` to initialize")
+    st.error("Daily update has never run — Run `python scripts/daily_update.py` to initialize")
 
-# Get minimum edge from session state or use default
-min_edge = st.session_state.get('min_edge', MIN_EDGE_PERCENT)
-
-# Date selector and injury toggle
-col1, col2, col3 = st.columns([2, 2, 2])
+# Date selector and controls
+col1, col2 = st.columns([2, 2])
 with col1:
     selected_date = st.date_input(
         "Select Date",
@@ -104,22 +83,10 @@ with col1:
     date_str = selected_date.strftime("%Y-%m-%d")
 
 with col2:
-    st.markdown(f"**Minimum Edge Threshold:** {min_edge}%")
-    st.caption("Adjust in sidebar on main page")
-
-with col3:
     apply_injuries = st.checkbox(
         "Apply Injury Adjustments",
         value=True,
         help="Adjust team Elo ratings based on injured players"
-    )
-
-col4, col5 = st.columns([2, 4])
-with col4:
-    hide_started_games = st.checkbox(
-        "Hide Started Games",
-        value=True,
-        help="Hide games that are in progress or finished from Value Bets"
     )
 
 st.markdown("---")
@@ -141,8 +108,8 @@ def load_games_and_predictions(date_str: str, apply_injuries: bool = True):
         return pd.DataFrame(), [], {}, {}
 
     predictions = []
-    game_times = {}  # Map game_id to game_time in CT
-    game_statuses = {}  # Map game_id to status
+    game_times = {}
+    game_statuses = {}
 
     for _, game in games_df.iterrows():
         pred = predict_game(
@@ -160,11 +127,9 @@ def load_games_and_predictions(date_str: str, apply_injuries: bool = True):
         )
         if pred:
             predictions.append(pred)
-            # Store game status
             game_status = game.get('status', 'scheduled')
             game_statuses[game['game_id']] = game_status
 
-            # Store game time display (prioritize status over start time)
             game_time_et = game.get('game_time')
 
             if game_status == 'in_progress':
@@ -202,7 +167,7 @@ if apply_injuries and predictions:
     ]
 
     if games_with_injury_impact:
-        st.markdown("#### 🏥 Significant Injury Impact")
+        st.markdown("#### Significant Injury Impact")
         for pred in games_with_injury_impact:
             impact_parts = []
             if abs(pred.home_injury_adjustment) >= 20:
@@ -219,7 +184,7 @@ if predictions:
     ]
 
     if games_with_b2b:
-        st.markdown("#### ⚠️ Back-to-Back Alert")
+        st.markdown("#### Back-to-Back Alert")
         for pred in games_with_b2b:
             b2b_parts = []
             if getattr(pred, 'home_rest_days', 1) == 0:
@@ -228,7 +193,7 @@ if predictions:
                 b2b_parts.append(f"{pred.away_team} on B2B ({getattr(pred, 'away_rest_adjustment', 0):+.0f} Elo)")
             st.info(f"**{pred.away_team} @ {pred.home_team}** - {', '.join(b2b_parts)}")
 
-# Fetch odds
+# Fetch odds for display in game expanders
 odds_df = pd.DataFrame()
 if ODDS_API_KEY and ODDS_API_KEY != "your_key_here":
     with st.spinner("Fetching current odds..."):
@@ -238,162 +203,9 @@ if ODDS_API_KEY and ODDS_API_KEY != "your_key_here":
                 st.success(f"Loaded odds from {odds_df['sportsbook'].nunique()} sportsbooks")
         except Exception as e:
             st.warning(f"Could not fetch odds: {e}")
-else:
-    st.info("💡 Configure ODDS_API_KEY in .env to see live odds and value bets")
-
-# Find value bets
-all_value_bets = []
-for pred in predictions:
-    if not odds_df.empty:
-        game_odds = odds_df[
-            (odds_df["home_team"] == pred.home_team) &
-            (odds_df["away_team"] == pred.away_team)
-        ]
-        bets = find_value_bets_for_game(pred, game_odds, min_edge)
-        all_value_bets.extend(bets)
-
-# Value bets summary
-if all_value_bets:
-    best_bets = filter_best_odds(all_value_bets)
-
-    # Filter out started games if checkbox is checked
-    if hide_started_games:
-        best_bets = [
-            bet for bet in best_bets
-            if game_statuses.get(bet.game_id) == 'scheduled'
-        ]
-
-    summary = get_value_summary(best_bets)
-
-    st.markdown("### 🎯 Value Bets Found")
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Value Bets", summary['total_bets'])
-    with col2:
-        st.metric("Avg Edge", f"{summary['avg_edge']:.1f}%")
-    with col3:
-        st.metric("Avg EV/100", f"${summary['avg_ev']:.2f}")
-    with col4:
-        st.metric("High Confidence", summary['high_confidence'])
-
-    st.markdown("---")
-
-    # Display value bets table
-    bets_df = value_bets_to_dataframe(best_bets)
-
-    if not bets_df.empty:
-        # Add game time to value bets
-        bets_df['game_time'] = bets_df['game_id'].map(game_times).fillna('-')
-
-        display_cols = [
-            'game_time', 'matchup', 'team', 'odds', 'sportsbook',
-            'model_prob_display', 'implied_prob_display',
-            'edge_display', 'ev_display', 'confidence'
-        ]
-
-        st.dataframe(
-            bets_df[display_cols].rename(columns={
-                'game_time': 'Time (CT)',
-                'matchup': 'Game',
-                'team': 'Pick',
-                'odds': 'Odds',
-                'sportsbook': 'Book',
-                'model_prob_display': 'Model Prob',
-                'implied_prob_display': 'Implied Prob',
-                'edge_display': 'Edge',
-                'ev_display': 'EV/$100',
-                'confidence': 'Confidence',
-            }),
-            use_container_width=True,
-            hide_index=True,
-        )
-
-        # Detailed view for each value bet
-        st.markdown("### 📋 Bet Details")
-
-        for bet in best_bets:
-            with st.expander(f"{bet.matchup} - {bet.team} ({bet.confidence} Confidence)"):
-                col1, col2, col3 = st.columns(3)
-
-                with col1:
-                    st.markdown("**Bet Details**")
-                    st.write(f"Team: **{bet.team}**")
-                    st.write(f"Type: {bet.bet_type}")
-                    st.write(f"Odds: {format_american_odds(bet.odds)}")
-                    st.write(f"Book: {bet.sportsbook}")
-
-                with col2:
-                    st.markdown("**Probabilities**")
-                    st.write(f"Model: {format_probability(bet.model_prob)}")
-                    st.write(f"Implied: {format_probability(bet.implied_prob)}")
-                    st.write(f"Edge: **{bet.edge:.1f}%**")
-
-                with col3:
-                    st.markdown("**Expected Value**")
-                    st.write(f"EV per $100: **${bet.expected_value:.2f}**")
-                    st.write(f"Kelly: {bet.kelly_fraction:.1%}")
-
-                    if bet.kelly_fraction > 0:
-                        kelly_bet = bet.kelly_fraction * 100  # As % of bankroll
-                        half_kelly = kelly_bet / 2
-                        st.caption(f"Suggested bet: {half_kelly:.1f}% of bankroll (half Kelly)")
-
-else:
-    if odds_df.empty:
-        st.info("Configure odds API to find value bets")
-    else:
-        st.info(f"No value bets found with edge > {min_edge}% for today's games")
-
-st.markdown("---")
-
-# Model Win/Loss Predictions
-st.markdown("### 🏆 Model Picks (Win/Loss)")
-st.caption("Which team the model predicts to win each game, regardless of betting value.")
-
-if predictions:
-    picks_data = []
-    for pred in predictions:
-        game_time = game_times.get(pred.game_id, '-')
-
-        # Determine predicted winner
-        if pred.home_win_prob > 0.5:
-            predicted_winner = pred.home_team
-            win_prob = pred.home_win_prob
-            loser = pred.away_team
-            lose_prob = pred.away_win_prob
-        else:
-            predicted_winner = pred.away_team
-            win_prob = pred.away_win_prob
-            loser = pred.home_team
-            lose_prob = pred.home_win_prob
-
-        # Confidence indicator
-        if win_prob >= 0.65:
-            confidence = "High"
-        elif win_prob >= 0.55:
-            confidence = "Medium"
-        else:
-            confidence = "Low"
-
-        picks_data.append({
-            'Time': game_time if game_time else '-',
-            'Matchup': f"{pred.away_team} @ {pred.home_team}",
-            'Pick': f"✅ {predicted_winner}",
-            'Win Prob': f"{win_prob:.1%}",
-            'Confidence': confidence,
-            'Spread': f"{pred.home_team} {pred.predicted_spread:+.1f}" if pred.predicted_spread < 0 else f"{pred.away_team} {-pred.predicted_spread:+.1f}",
-        })
-
-    picks_df = pd.DataFrame(picks_data)
-    st.dataframe(picks_df, use_container_width=True, hide_index=True)
-else:
-    st.info("No games to display")
-
-st.markdown("---")
 
 # All games predictions table
-st.markdown("### 📊 All Game Predictions")
+st.markdown("### All Game Predictions")
 
 pred_df = predictions_to_dataframe(predictions)
 if not pred_df.empty:
@@ -460,7 +272,7 @@ if not pred_df.empty:
     )
 
 # Game details expanders
-st.markdown("### 🏀 Game Details")
+st.markdown("### Game Details")
 
 for pred in predictions:
     # Add injury indicator to expander title
@@ -561,7 +373,7 @@ for pred in predictions:
                     (odds_df["away_team"] == pred.away_team)
                 ]
                 if not game_odds.empty:
-                    st.markdown("**Available Odds:**")
+                    st.markdown("**Sportsbook Odds:**")
                     for _, odds_row in game_odds.iterrows():
                         book = odds_row.get("sportsbook", "")
                         home_ml = odds_row.get("home_ml")
@@ -572,7 +384,7 @@ for pred in predictions:
         # Show injury details
         if pred.injuries_applied and (pred.home_injuries or pred.away_injuries):
             st.markdown("---")
-            st.markdown("**🏥 Injury Report**")
+            st.markdown("**Injury Report**")
 
             inj_col1, inj_col2 = st.columns(2)
 
@@ -580,12 +392,12 @@ for pred in predictions:
                 if pred.home_injuries:
                     st.markdown(f"*{pred.home_team}:*")
                     for inj in pred.home_injuries:
-                        if abs(inj.get('elo_impact', 0)) >= 5:  # Only show significant impacts
+                        if abs(inj.get('elo_impact', 0)) >= 5:
                             status = inj.get('status', 'Out')
                             impact = inj.get('elo_impact', 0)
                             reason = inj.get('reason', '')
                             reason_str = f" - {reason}" if reason else ""
-                            st.caption(f"• {inj['player_name']} ({status}): {impact:+.0f} Elo{reason_str}")
+                            st.caption(f"* {inj['player_name']} ({status}): {impact:+.0f} Elo{reason_str}")
                 else:
                     st.caption(f"{pred.home_team}: No significant injuries")
 
@@ -593,24 +405,23 @@ for pred in predictions:
                 if pred.away_injuries:
                     st.markdown(f"*{pred.away_team}:*")
                     for inj in pred.away_injuries:
-                        if abs(inj.get('elo_impact', 0)) >= 5:  # Only show significant impacts
+                        if abs(inj.get('elo_impact', 0)) >= 5:
                             status = inj.get('status', 'Out')
                             impact = inj.get('elo_impact', 0)
                             reason = inj.get('reason', '')
                             reason_str = f" - {reason}" if reason else ""
-                            st.caption(f"• {inj['player_name']} ({status}): {impact:+.0f} Elo{reason_str}")
+                            st.caption(f"* {inj['player_name']} ({status}): {impact:+.0f} Elo{reason_str}")
                 else:
                     st.caption(f"{pred.away_team}: No significant injuries")
 
 # Refresh button
 st.markdown("---")
-if st.button("🔄 Refresh Data"):
+if st.button("Refresh Data"):
     with st.spinner("Fetching latest game data..."):
         updated_count = 0
         source = None
 
         try:
-            # Try NBA API first (works locally, may be blocked on cloud servers)
             fresh_games = fetch_games_by_date(date_str)
             if not fresh_games.empty:
                 processed = process_scoreboard_for_db(fresh_games, CURRENT_SEASON)
@@ -619,18 +430,16 @@ if st.button("🔄 Refresh Data"):
                     updated_count += 1
                 source = "NBA API"
         except Exception as e:
-            print(f"NBA API error: {e}")  # Fall through to ESPN fallback
+            print(f"NBA API error: {e}")
 
         # Fallback to ESPN if NBA API returned nothing
         if updated_count == 0:
             try:
                 espn_games = fetch_scoreboard_espn(date_str)
                 if espn_games:
-                    # Get existing games from DB to match by team abbreviation
                     existing_games = get_games_by_date(date_str)
                     if not existing_games.empty:
                         for espn_game in espn_games:
-                            # Find matching DB game by team abbreviations
                             match = existing_games[
                                 (existing_games['home_abbr'] == espn_game['home_abbr']) &
                                 (existing_games['away_abbr'] == espn_game['away_abbr'])
@@ -651,13 +460,13 @@ if st.button("🔄 Refresh Data"):
                                 updated_count += 1
                     source = "ESPN"
                 else:
-                    st.warning("⚠️ Could not fetch game data from either NBA API or ESPN.")
+                    st.warning("Could not fetch game data from either NBA API or ESPN.")
             except Exception as e:
-                st.error(f"❌ Error fetching data: {e}")
+                st.error(f"Error fetching data: {e}")
 
         if updated_count > 0:
-            st.success(f"✅ Updated {updated_count} games from {source}")
+            st.success(f"Updated {updated_count} games from {source}")
             st.cache_data.clear()
             clear_injuries_cache()
-            time.sleep(1)  # Let user see the message
+            time.sleep(1)
             st.rerun()
