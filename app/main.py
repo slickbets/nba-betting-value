@@ -14,6 +14,7 @@ from src.models.predictor import predict_game
 from src.utils.update_status import get_last_run_info
 from src.utils.time_utils import convert_et_to_ct
 from src.utils.feedback import submit_feedback
+from src.utils.live_scores import refresh_live_scores
 
 # Page configuration
 st.set_page_config(
@@ -174,6 +175,10 @@ def main():
         help="Choose a date to view predictions"
     )
     date_str = selected_date.strftime("%Y-%m-%d")
+
+    # Auto-refresh live scores from ESPN (cached 60s)
+    if date_str == now_ct().strftime("%Y-%m-%d"):
+        refresh_live_scores(date_str)
 
     st.markdown("---")
 

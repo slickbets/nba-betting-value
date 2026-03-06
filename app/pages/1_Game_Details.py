@@ -13,6 +13,7 @@ from src.utils.time_utils import convert_et_to_ct
 from src.data.database import get_games_by_date, init_database, upsert_game
 from src.data.nba_fetcher import fetch_games_by_date, process_scoreboard_for_db, fetch_scoreboard_espn
 from src.utils.update_status import get_last_run_info
+from src.utils.live_scores import refresh_live_scores
 from src.data.odds_fetcher import get_current_odds
 from src.models.predictor import predict_game, predictions_to_dataframe, clear_injuries_cache
 
@@ -59,8 +60,12 @@ except Exception as e:
     st.error(f"Database error: {e}")
     st.stop()
 
+# Auto-refresh live scores from ESPN (cached 60s)
+if date_str == now_ct().strftime("%Y-%m-%d"):
+    refresh_live_scores(date_str)
+
 # Fetch games for the selected date
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+@st.cache_data(ttl=60)  # Cache for 1 minute
 def load_games_and_predictions(date_str: str, apply_injuries: bool = True):
     """Load games and generate predictions with optional injury adjustments."""
     games_df = get_games_by_date(date_str)
@@ -375,59 +380,5 @@ for pred in predictions:
                 else:
                     st.caption(f"{pred.away_team}: No significant injuries")
 
-# Refresh button
 st.markdown("---")
-if st.button("Refresh Data"):
-    with st.spinner("Fetching latest game data..."):
-        updated_count = 0
-        source = None
-
-        try:
-            fresh_games = fetch_games_by_date(date_str)
-            if not fresh_games.empty:
-                processed = process_scoreboard_for_db(fresh_games, CURRENT_SEASON)
-                for game in processed:
-                    upsert_game(**game)
-                    updated_count += 1
-                source = "NBA API"
-        except Exception as e:
-            st.warning(f"NBA API unavailable: {e}")
-
-        # Fallback to ESPN if NBA API returned nothing
-        if updated_count == 0:
-            try:
-                espn_games = fetch_scoreboard_espn(date_str)
-                if espn_games:
-                    existing_games = get_games_by_date(date_str)
-                    if not existing_games.empty:
-                        for espn_game in espn_games:
-                            match = existing_games[
-                                (existing_games['home_abbr'] == espn_game['home_abbr']) &
-                                (existing_games['away_abbr'] == espn_game['away_abbr'])
-                            ]
-                            if not match.empty:
-                                game_row = match.iloc[0]
-                                upsert_game(
-                                    game_id=game_row['game_id'],
-                                    season=game_row['season'],
-                                    game_date=date_str,
-                                    game_time=espn_game.get('game_time'),
-                                    home_team_id=int(game_row['home_team_id']),
-                                    away_team_id=int(game_row['away_team_id']),
-                                    home_score=espn_game['home_score'],
-                                    away_score=espn_game['away_score'],
-                                    status=espn_game['status'],
-                                )
-                                updated_count += 1
-                    source = "ESPN"
-                else:
-                    st.warning("Could not fetch game data from either NBA API or ESPN.")
-            except Exception as e:
-                st.error(f"Error fetching data: {e}")
-
-        if updated_count > 0:
-            st.success(f"Updated {updated_count} games from {source}")
-            st.cache_data.clear()
-            clear_injuries_cache()
-            time.sleep(1)
-            st.rerun()
+st.caption("Live scores update automatically every 60 seconds via ESPN.")
