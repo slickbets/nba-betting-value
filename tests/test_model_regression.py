@@ -36,7 +36,11 @@ MIN_GAMES = 100                   # skip if DB has fewer
 @pytest.fixture(scope="module")
 def backtest_metrics():
     """Run a single backtest for the module; reused across all tests."""
-    games_df, teams = load_season_data(CURRENT_SEASON)
+    try:
+        games_df, teams = load_season_data(CURRENT_SEASON)
+    except Exception:
+        pytest.skip("Database not available (CI environment)")
+
     if len(games_df) < MIN_GAMES:
         pytest.skip(f"Only {len(games_df)} completed games (need {MIN_GAMES})")
 
