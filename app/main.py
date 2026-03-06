@@ -254,30 +254,37 @@ def main():
         else:
             confidence = "Low"
 
-        # Result column: start time, in-progress, or winner
-        if status == 'final':
-            home_score = info.get('home_score')
-            away_score = info.get('away_score')
-            if home_score is not None and away_score is not None:
-                if int(home_score) > int(away_score):
-                    actual_winner = pred.home_team
-                else:
-                    actual_winner = pred.away_team
-                correct = actual_winner == predicted_winner
-                result = f"{'Correct' if correct else 'Wrong'} ({actual_winner} won)"
-            else:
-                result = "Final"
+        # Score column: time, live score, or final score
+        home_score = info.get('home_score')
+        away_score = info.get('away_score')
+        if status == 'final' and home_score is not None and away_score is not None:
+            score = f"{pred.away_team} {int(away_score)} - {int(home_score)} {pred.home_team} (Final)"
+        elif status == 'in_progress' and home_score is not None and away_score is not None:
+            score = f"{pred.away_team} {int(away_score)} - {int(home_score)} {pred.home_team} (Live)"
         elif status == 'in_progress':
-            result = "In Progress"
+            score = "In Progress"
         else:
-            result = game_time
+            score = game_time
+
+        # Result column
+        if status == 'final' and home_score is not None and away_score is not None:
+            if int(home_score) > int(away_score):
+                actual_winner = pred.home_team
+            else:
+                actual_winner = pred.away_team
+            result = "Correct" if actual_winner == predicted_winner else "Wrong"
+        elif status == 'in_progress':
+            result = "Live"
+        else:
+            result = "-"
 
         picks_data.append({
             'Matchup': f"{pred.away_team} @ {pred.home_team}",
-            'Pick': f"{predicted_winner}",
+            'Slick Bets Model Pick': f"{predicted_winner}",
             'Win Prob': f"{win_prob:.1%}",
             'Confidence': confidence,
             'Spread': f"{predicted_winner} {-(pred.predicted_spread if predicted_winner == pred.home_team else -pred.predicted_spread):+.1f}",
+            'Score': score,
             'Result': result,
         })
 
