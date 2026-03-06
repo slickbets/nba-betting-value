@@ -126,43 +126,23 @@ def render_game_card(pred, info):
     else:
         result = "-"
 
-    card_html = f"""
-    <div class="game-card">
-        <div class="game-card-header">
-            <span class="game-card-matchup">{pred.away_team} @ {pred.home_team}</span>
-            {time_html}
-        </div>
-        <div style="margin-bottom: 0.6rem;">
-            {score_html}
-        </div>
-        <div class="game-card-body">
-            <div class="game-card-stat">
-                <div class="game-card-stat-label">SB Pick</div>
-                <div class="game-card-stat-value">{predicted_winner}</div>
-            </div>
-            <div class="game-card-stat">
-                <div class="game-card-stat-label">Win Prob</div>
-                <div class="game-card-stat-value">{win_prob:.0%}</div>
-            </div>
-            <div class="game-card-stat">
-                <div class="game-card-stat-label">Confidence</div>
-                <div>{confidence_badge(confidence)}</div>
-            </div>
-            <div class="game-card-stat">
-                <div class="game-card-stat-label">Spread</div>
-                <div class="game-card-stat-value">{spread_display}</div>
-            </div>
-            <div class="game-card-stat">
-                <div class="game-card-stat-label">Total</div>
-                <div class="game-card-stat-value">{total_display}</div>
-            </div>
-            <div class="game-card-stat">
-                <div class="game-card-stat-label">Result</div>
-                <div>{result_badge(result)}</div>
-            </div>
-        </div>
-    </div>
-    """
+    card_html = (
+        f'<div class="game-card">'
+        f'<div class="game-card-header">'
+        f'<span class="game-card-matchup">{pred.away_team} @ {pred.home_team}</span>'
+        f'{time_html}'
+        f'</div>'
+        f'<div style="margin-bottom: 0.6rem;">{score_html}</div>'
+        f'<div class="game-card-body">'
+        f'<div class="game-card-stat"><div class="game-card-stat-label">SB Pick</div><div class="game-card-stat-value">{predicted_winner}</div></div>'
+        f'<div class="game-card-stat"><div class="game-card-stat-label">Win Prob</div><div class="game-card-stat-value">{win_prob:.0%}</div></div>'
+        f'<div class="game-card-stat"><div class="game-card-stat-label">Confidence</div><div>{confidence_badge(confidence)}</div></div>'
+        f'<div class="game-card-stat"><div class="game-card-stat-label">Spread</div><div class="game-card-stat-value">{spread_display}</div></div>'
+        f'<div class="game-card-stat"><div class="game-card-stat-label">Total</div><div class="game-card-stat-value">{total_display}</div></div>'
+        f'<div class="game-card-stat"><div class="game-card-stat-label">Result</div><div>{result_badge(result)}</div></div>'
+        f'</div>'
+        f'</div>'
+    )
     st.markdown(card_html, unsafe_allow_html=True)
 
     # Inline expandable details
@@ -288,32 +268,35 @@ def main():
 
         cols = st.columns(3)
         with cols[0]:
-            st.markdown(f"""
-            <div class="accuracy-card">
-                <div class="accuracy-big">{season_pct:.1f}%</div>
-                <div class="accuracy-label">Season Accuracy</div>
-                <div class="accuracy-detail">{season_correct} / {season_total} picks</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="accuracy-card">'
+                f'<div class="accuracy-big">{season_pct:.1f}%</div>'
+                f'<div class="accuracy-label">Season Accuracy</div>'
+                f'<div class="accuracy-detail">{season_correct} / {season_total} picks</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
         with cols[1]:
             if recent_total > 0:
                 recent_pct = recent_correct / recent_total * 100
-                st.markdown(f"""
-                <div class="accuracy-card">
-                    <div class="accuracy-big">{recent_pct:.1f}%</div>
-                    <div class="accuracy-label">Last 7 Days</div>
-                    <div class="accuracy-detail">{recent_correct} / {recent_total} picks</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(
+                    f'<div class="accuracy-card">'
+                    f'<div class="accuracy-big">{recent_pct:.1f}%</div>'
+                    f'<div class="accuracy-label">Last 7 Days</div>'
+                    f'<div class="accuracy-detail">{recent_correct} / {recent_total} picks</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
             else:
-                st.markdown("""
-                <div class="accuracy-card">
-                    <div class="accuracy-big">-</div>
-                    <div class="accuracy-label">Last 7 Days</div>
-                    <div class="accuracy-detail">No recent games</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(
+                    '<div class="accuracy-card">'
+                    '<div class="accuracy-big">-</div>'
+                    '<div class="accuracy-label">Last 7 Days</div>'
+                    '<div class="accuracy-detail">No recent games</div>'
+                    '</div>',
+                    unsafe_allow_html=True,
+                )
 
         with cols[2]:
             # Daily update status
@@ -330,13 +313,14 @@ def main():
                 status_color = "#F44336"
                 status_icon = "&#10007;"
                 status_text = "Never run"
-            st.markdown(f"""
-            <div class="accuracy-card">
-                <div class="accuracy-big" style="color: {status_color};">{status_icon}</div>
-                <div class="accuracy-label">Model Status</div>
-                <div class="accuracy-detail">{status_text}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="accuracy-card">'
+                f'<div class="accuracy-big" style="color: {status_color};">{status_icon}</div>'
+                f'<div class="accuracy-label">Model Status</div>'
+                f'<div class="accuracy-detail">{status_text}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
     st.markdown("")
 

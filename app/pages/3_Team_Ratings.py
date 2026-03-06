@@ -165,12 +165,13 @@ with col2:
         desc = {"Championship": "Title favorites", "Contender": "Strong playoff teams", "Playoff": "Playoff caliber", "Bubble": "Play-in range", "Rebuilding": "Lottery teams"}
         badge_style = tier_badge_css[tier_name]
         count = tier_counts.get(tier_name, 0)
-        st.markdown(f"""
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:0.3rem 0;">
-            <span class="badge" style="{badge_style}">{tier_name}</span>
-            <span style="color:#888; font-size:0.8rem;">{elo_range[tier_name]} &middot; {count} teams</span>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f'<div style="display:flex; justify-content:space-between; align-items:center; padding:0.3rem 0;">'
+            f'<span class="badge" style="{badge_style}">{tier_name}</span>'
+            f'<span style="color:#888; font-size:0.8rem;">{elo_range[tier_name]} &middot; {count} teams</span>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
 st.markdown("---")
 
@@ -231,12 +232,13 @@ if selected_team:
     ]
     for col, label, value in zip(cols, labels, values):
         with col:
-            st.markdown(f"""
-            <div class="accuracy-card">
-                <div class="accuracy-big" style="font-size:1.8rem;">{value}</div>
-                <div class="accuracy-label">{label}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="accuracy-card">'
+                f'<div class="accuracy-big" style="font-size:1.8rem;">{value}</div>'
+                f'<div class="accuracy-label">{label}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
     st.markdown("")
 
@@ -303,30 +305,33 @@ if selected_team:
         # Stats
         stat_cols = st.columns(3)
         with stat_cols[0]:
-            st.markdown(f"""
-            <div class="accuracy-card">
-                <div class="accuracy-big" style="font-size:1.8rem;">{peak_row['elo_after']:.0f}</div>
-                <div class="accuracy-label">Peak Elo</div>
-                <div class="accuracy-detail">{peak_row['game_date'].strftime('%Y-%m-%d')}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="accuracy-card">'
+                f'<div class="accuracy-big" style="font-size:1.8rem;">{peak_row["elo_after"]:.0f}</div>'
+                f'<div class="accuracy-label">Peak Elo</div>'
+                f'<div class="accuracy-detail">{peak_row["game_date"].strftime("%Y-%m-%d")}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
         with stat_cols[1]:
-            st.markdown(f"""
-            <div class="accuracy-card">
-                <div class="accuracy-big" style="font-size:1.8rem; color:#F44336;">{low_row['elo_after']:.0f}</div>
-                <div class="accuracy-label">Low Elo</div>
-                <div class="accuracy-detail">{low_row['game_date'].strftime('%Y-%m-%d')}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="accuracy-card">'
+                f'<div class="accuracy-big" style="font-size:1.8rem; color:#F44336;">{low_row["elo_after"]:.0f}</div>'
+                f'<div class="accuracy-label">Low Elo</div>'
+                f'<div class="accuracy-detail">{low_row["game_date"].strftime("%Y-%m-%d")}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
         with stat_cols[2]:
             avg_change = history_df['elo_change'].mean()
             avg_color = GREEN if avg_change > 0 else "#F44336"
-            st.markdown(f"""
-            <div class="accuracy-card">
-                <div class="accuracy-big" style="font-size:1.8rem; color:{avg_color};">{avg_change:+.1f}</div>
-                <div class="accuracy-label">Avg Change/Game</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="accuracy-card">'
+                f'<div class="accuracy-big" style="font-size:1.8rem; color:{avg_color};">{avg_change:+.1f}</div>'
+                f'<div class="accuracy-label">Avg Change/Game</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
     else:
         st.info(f"No Elo history available for {selected_team}. Run backfill to generate history.")
 
@@ -363,39 +368,42 @@ if team1 and team2 and team1 != team2:
     with col1:
         home_prob, away_prob = calculate_win_probabilities(t1_data['current_elo'], t2_data['current_elo'])
         spread = elo_to_spread(t1_data['current_elo'], t2_data['current_elo'])
-        st.markdown(f"""
-        <div class="game-card">
-            <div class="game-card-matchup" style="margin-bottom:0.5rem;">{team1} at Home</div>
-            <div class="game-card-stat-label">Win Prob</div>
-            <div class="game-card-stat-value">{team1} {home_prob:.1%} &middot; {team2} {away_prob:.1%}</div>
-            <div class="game-card-stat-label" style="margin-top:0.4rem;">Spread</div>
-            <div class="game-card-stat-value">{team1} {spread:.1f}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="game-card">'
+            f'<div class="game-card-matchup" style="margin-bottom:0.5rem;">{team1} at Home</div>'
+            f'<div class="game-card-stat-label">Win Prob</div>'
+            f'<div class="game-card-stat-value">{team1} {home_prob:.1%} &middot; {team2} {away_prob:.1%}</div>'
+            f'<div class="game-card-stat-label" style="margin-top:0.4rem;">Spread</div>'
+            f'<div class="game-card-stat-value">{team1} {spread:.1f}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
     with col2:
         home_prob, away_prob = calculate_win_probabilities(t2_data['current_elo'], t1_data['current_elo'])
         spread = elo_to_spread(t2_data['current_elo'], t1_data['current_elo'])
-        st.markdown(f"""
-        <div class="game-card">
-            <div class="game-card-matchup" style="margin-bottom:0.5rem;">{team2} at Home</div>
-            <div class="game-card-stat-label">Win Prob</div>
-            <div class="game-card-stat-value">{team2} {home_prob:.1%} &middot; {team1} {away_prob:.1%}</div>
-            <div class="game-card-stat-label" style="margin-top:0.4rem;">Spread</div>
-            <div class="game-card-stat-value">{team2} {spread:.1f}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="game-card">'
+            f'<div class="game-card-matchup" style="margin-bottom:0.5rem;">{team2} at Home</div>'
+            f'<div class="game-card-stat-label">Win Prob</div>'
+            f'<div class="game-card-stat-value">{team2} {home_prob:.1%} &middot; {team1} {away_prob:.1%}</div>'
+            f'<div class="game-card-stat-label" style="margin-top:0.4rem;">Spread</div>'
+            f'<div class="game-card-stat-value">{team2} {spread:.1f}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
     with col3:
         elo_diff = t1_data['current_elo'] - t2_data['current_elo']
-        st.markdown(f"""
-        <div class="game-card">
-            <div class="game-card-matchup" style="margin-bottom:0.5rem;">Elo Comparison</div>
-            <div class="game-card-stat-label">{team1}</div>
-            <div class="game-card-stat-value">{t1_data['current_elo']:.0f}</div>
-            <div class="game-card-stat-label" style="margin-top:0.4rem;">{team2}</div>
-            <div class="game-card-stat-value">{t2_data['current_elo']:.0f}</div>
-            <div class="game-card-stat-label" style="margin-top:0.4rem;">Difference</div>
-            <div class="game-card-stat-value">{elo_diff:+.0f}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="game-card">'
+            f'<div class="game-card-matchup" style="margin-bottom:0.5rem;">Elo Comparison</div>'
+            f'<div class="game-card-stat-label">{team1}</div>'
+            f'<div class="game-card-stat-value">{t1_data["current_elo"]:.0f}</div>'
+            f'<div class="game-card-stat-label" style="margin-top:0.4rem;">{team2}</div>'
+            f'<div class="game-card-stat-value">{t2_data["current_elo"]:.0f}</div>'
+            f'<div class="game-card-stat-label" style="margin-top:0.4rem;">Difference</div>'
+            f'<div class="game-card-stat-value">{elo_diff:+.0f}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )

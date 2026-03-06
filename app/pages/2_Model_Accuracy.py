@@ -157,43 +157,48 @@ accuracy_color = GREEN if metrics['pick_accuracy'] >= 60 else YELLOW if metrics[
 
 cols = st.columns(5)
 with cols[0]:
-    st.markdown(f"""
-    <div class="accuracy-card">
-        <div class="accuracy-big" style="font-size:2rem;">{metrics['total_games']}</div>
-        <div class="accuracy-label">Games Analyzed</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="accuracy-card">'
+        f'<div class="accuracy-big" style="font-size:2rem;">{metrics["total_games"]}</div>'
+        f'<div class="accuracy-label">Games Analyzed</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 with cols[1]:
-    st.markdown(f"""
-    <div class="accuracy-card">
-        <div class="accuracy-big" style="font-size:2rem;">{metrics['correct_picks']}/{metrics['total_games']}</div>
-        <div class="accuracy-label">Correct Picks</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="accuracy-card">'
+        f'<div class="accuracy-big" style="font-size:2rem;">{metrics["correct_picks"]}/{metrics["total_games"]}</div>'
+        f'<div class="accuracy-label">Correct Picks</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 with cols[2]:
-    st.markdown(f"""
-    <div class="accuracy-card">
-        <div class="accuracy-big" style="font-size:2rem; color:{accuracy_color};">{metrics['pick_accuracy']:.1f}%</div>
-        <div class="accuracy-label">Pick Accuracy</div>
-        <div class="accuracy-detail">{metrics['pick_accuracy'] - 50:+.1f}% vs coin flip</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="accuracy-card">'
+        f'<div class="accuracy-big" style="font-size:2rem; color:{accuracy_color};">{metrics["pick_accuracy"]:.1f}%</div>'
+        f'<div class="accuracy-label">Pick Accuracy</div>'
+        f'<div class="accuracy-detail">{metrics["pick_accuracy"] - 50:+.1f}% vs coin flip</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 with cols[3]:
-    st.markdown(f"""
-    <div class="accuracy-card">
-        <div class="accuracy-big" style="font-size:2rem;">{metrics['avg_spread_error']:.1f}</div>
-        <div class="accuracy-label">Avg Spread Error</div>
-        <div class="accuracy-detail">points</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="accuracy-card">'
+        f'<div class="accuracy-big" style="font-size:2rem;">{metrics["avg_spread_error"]:.1f}</div>'
+        f'<div class="accuracy-label">Avg Spread Error</div>'
+        f'<div class="accuracy-detail">points</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 with cols[4]:
-    st.markdown(f"""
-    <div class="accuracy-card">
-        <div class="accuracy-big" style="font-size:2rem;">{metrics['median_spread_error']:.1f}</div>
-        <div class="accuracy-label">Median Spread Error</div>
-        <div class="accuracy-detail">points</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="accuracy-card">'
+        f'<div class="accuracy-big" style="font-size:2rem;">{metrics["median_spread_error"]:.1f}</div>'
+        f'<div class="accuracy-label">Median Spread Error</div>'
+        f'<div class="accuracy-detail">points</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 st.markdown("")
 st.markdown("---")
@@ -210,20 +215,21 @@ with col1:
         ("Low (<55%)", metrics['low_conf_games'], metrics['low_conf_accuracy'], "Low"),
     ]
     for label, games, acc, level in conf_rows:
-        st.markdown(f"""
-        <div class="game-card" style="padding: 0.8rem 1rem;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                    <span style="font-weight:600; color:#FAFAFA;">{label}</span>
-                    <span style="color:#888; font-size:0.85rem; margin-left:0.5rem;">{games} games</span>
-                </div>
-                <div style="display:flex; align-items:center; gap:0.8rem;">
-                    <span style="font-size:1.2rem; font-weight:700; color:#FAFAFA;">{acc:.1f}%</span>
-                    {confidence_badge(level)}
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="game-card" style="padding: 0.8rem 1rem;">'
+            f'<div style="display:flex; justify-content:space-between; align-items:center;">'
+            f'<div>'
+            f'<span style="font-weight:600; color:#FAFAFA;">{label}</span>'
+            f'<span style="color:#888; font-size:0.85rem; margin-left:0.5rem;">{games} games</span>'
+            f'</div>'
+            f'<div style="display:flex; align-items:center; gap:0.8rem;">'
+            f'<span style="font-size:1.2rem; font-weight:700; color:#FAFAFA;">{acc:.1f}%</span>'
+            f'{confidence_badge(level)}'
+            f'</div>'
+            f'</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
     st.caption("High confidence picks should have higher accuracy if the model is well-calibrated.")
 
 with col2:
