@@ -173,6 +173,53 @@ ELO_INITIAL_RATING = 1500.0   # Starting rating
 pytest tests/ -v
 ```
 
+## Deployment (Fly.io)
+
+The app runs on [Fly.io](https://fly.io) with a persistent volume for SQLite. Daily updates run on the server via cron.
+
+### First-time Setup
+
+```bash
+# Install flyctl: https://fly.io/docs/flyctl/install/
+fly auth login
+fly apps create nba-predictions
+fly volumes create nba_data --size 1 --region ord
+fly secrets set ODDS_API_KEY=your_key_here
+fly deploy
+
+# Seed the database (first deploy only)
+fly sftp shell
+> put data/nba_betting.db /data/nba_betting.db
+```
+
+### Deploying Updates
+
+Push to `main` triggers GitHub Actions (test + deploy). Or deploy manually:
+
+```bash
+fly deploy
+```
+
+### Useful Commands
+
+```bash
+# Run daily update manually on the server
+fly ssh console -C "cd /app && python scripts/daily_update.py --force"
+
+# View daily update logs
+fly ssh console -C "cat /data/daily_update.log"
+
+# Check app status
+fly status
+
+# Open the app
+fly open
+```
+
+### CI/CD
+
+GitHub Actions (`.github/workflows/deploy.yml`) runs tests then deploys on every push to `main`. Add `FLY_API_TOKEN` to your GitHub repo secrets (`fly tokens create deploy`).
+
 ## Limitations
 
 - Elo is a simple model - backtested accuracy is ~64% on straight predictions (914 games, 2025-26)
@@ -197,6 +244,7 @@ pytest tests/ -v
 - [x] ESPN scoreboard fallback for cloud deployments
 - [x] NBA CDN backfill for API outages
 - [x] Predictions-focused UI with immediate visibility
+- [x] Fly.io deployment with persistent volume, server-side cron, CI/CD
 
 ### Future Ideas
 - [ ] Historical injury impact analysis (backtest accuracy)

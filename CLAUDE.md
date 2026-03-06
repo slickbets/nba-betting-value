@@ -45,7 +45,11 @@ config.py               → All configuration constants + now_ct() timezone help
 | `scripts/cleanup_preseason.py` | Remove preseason games and elo_history entries |
 | `scripts/backfill_od_elo.py` | Rebuild O/D Elo only by replaying all season games |
 | `scripts/backfill_missing_days.py` | Backfill games/predictions/Elo from NBA CDN when NBA API is down |
-| `scripts/run_daily_update.sh` | Wrapper script for launchd automation |
+| `scripts/run_daily_update.sh` | Local dev wrapper for daily_update.py |
+| `scripts/start_production.sh` | Fly.io entrypoint (cron + Streamlit) |
+| `Dockerfile` | Production container image |
+| `fly.toml` | Fly.io app configuration |
+| `.github/workflows/deploy.yml` | CI/CD: test + deploy on push to main |
 | `src/models/params.py` | EloParams frozen dataclass (all tunable parameters) |
 | `src/backtesting/engine.py` | Backtest engine: replays season, measures accuracy |
 | `src/backtesting/sweep.py` | Parameter grid generation + parallel sweep execution |
@@ -89,40 +93,58 @@ config.py               → All configuration constants + now_ct() timezone help
 /opt/homebrew/bin/python3.11 scripts/param_sweep.py --param k_factor 15 18 20 --param home_advantage 30 35 40
 ```
 
-## Automated Daily Updates
+## Deployment (Fly.io)
 
-Daily updates run automatically via macOS launchd:
+The app runs on Fly.io (`ord` region) with a persistent volume for SQLite. Daily updates run server-side via cron. Pushes to `main` trigger GitHub Actions (test + deploy).
 
-| Trigger | When |
-|---------|------|
-| RunAtLoad | On login |
-| StartCalendarInterval | 9:00 AM (if awake) |
-| StartInterval | Every 2 hours (catches wake from sleep) |
-
-The script has an "already ran today" check, so it only does real work once per day.
+**Architecture:**
+- Fly Machine (shared-cpu-1x, 256 MB) runs Streamlit on port 8501
+- Fly Volume (`nba_data`, 1 GB) mounted at `/data` holds `nba_betting.db` and `.last_daily_update`
+- Cron runs `daily_update.py` at 14:00 + 15:00 UTC (covers CDT/CST for ~9 AM CT)
+- `DATA_DIR` and `DB_PATH` env vars point to `/data` (defaults to local `data/` for dev)
+- DB is NOT in git -- seeded to volume on first deploy via `fly sftp shell`
 
 **Files:**
-- Plist: `~/Library/LaunchAgents/com.nba-betting-value.daily-update.plist`
-- Wrapper: `scripts/run_daily_update.sh`
-- Logs: `~/Library/Logs/nba-betting-update.log`
-- Run marker: `data/.last_daily_update`
+- `Dockerfile` -- Python 3.11 + cron + Streamlit
+- `fly.toml` -- Fly.io config (region, volume mount, services, health check)
+- `scripts/start_production.sh` -- Entrypoint: sets up cron, seeds DB if empty, starts Streamlit
+- `.github/workflows/deploy.yml` -- CI/CD: pytest then `flyctl deploy`
 
 **Management commands:**
 ```bash
-# View logs
-tail -50 ~/Library/Logs/nba-betting-update.log
+# Deploy manually
+fly deploy
 
-# Disable automation
-launchctl unload ~/Library/LaunchAgents/com.nba-betting-value.daily-update.plist
+# Run daily update on server
+fly ssh console -C "cd /app && python scripts/daily_update.py --force"
 
-# Re-enable automation
-launchctl load ~/Library/LaunchAgents/com.nba-betting-value.daily-update.plist
+# View daily update logs
+fly ssh console -C "cat /data/daily_update.log"
 
 # Check status
-launchctl list | grep nba-betting
+fly status
+
+# Open app
+fly open
 ```
 
+**Local automation (legacy, still works):**
+- launchd plist: `~/Library/LaunchAgents/com.nba-betting-value.daily-update.plist`
+- Local wrapper: `scripts/run_daily_update.sh` (no longer pushes DB to git)
+- Logs: `~/Library/Logs/nba-betting-update.log`
+
 ## Recent Changes (March 2026)
+
+**Fly.io Migration (from Railway):**
+- Migrated from Railway to Fly.io with persistent volume for SQLite (no more DB in git)
+- `config.py`: `DATA_DIR` and `DB_PATH` now configurable via env vars (defaults to local `data/` for dev)
+- `Dockerfile`: Python 3.11-slim with cron for server-side daily updates
+- `fly.toml`: `ord` region, volume mount at `/data`, health check on port 8501
+- `scripts/start_production.sh`: Sets up cron (14:00 + 15:00 UTC), seeds DB from repo if volume empty, starts Streamlit
+- `.github/workflows/deploy.yml`: pytest then `flyctl deploy` on push to `main`
+- `scripts/run_daily_update.sh`: Removed git commit/push of DB (no longer needed)
+- Deleted `railway.toml` and `scripts/start.sh`
+- `data/nba_betting.db` and `data/.last_daily_update` added to `.gitignore` and removed from git tracking
 
 **Data Cleanup & Elo Rebuild (model-affecting):**
 - **Preseason game contamination fixed**: 71 preseason games (Oct 3-19, 2025) and 73 from 2024-25 were in the DB, with 268 elo_history entries affecting team ratings. SAS had 5 fake preseason wins inflating Elo, MIA had 6 fake losses deflating it. New `scripts/cleanup_preseason.py` removes all preseason data.
@@ -235,7 +257,7 @@ launchctl list | grep nba-betting
 
 4. **`datetime.now()` → `now_ct()` in scripts:**
    - Replaced 9 `datetime.now()` calls in `scripts/daily_update.py` and 2 in `src/data/nba_fetcher.py`
-   - Ensures correct date on cloud servers (Railway returns UTC)
+   - Ensures correct date on cloud servers (Fly.io returns UTC)
 
 5. **Clear stale player impact data on season change:**
    - Added `clear_old_player_impacts(season)` to `src/data/database.py`
@@ -276,7 +298,7 @@ launchctl list | grep nba-betting
 - Files: `config.py`, `src/models/params.py`, `scripts/daily_update.py`, `scripts/backfill_od_elo.py`
 
 **Central Time Fix for Cloud Deployment:**
-- `datetime.now()` returns UTC on Railway, causing the app to default to the wrong date after 6 PM CT
+- `datetime.now()` returns UTC on Fly.io, causing the app to default to the wrong date after 6 PM CT
 - Added `now_ct()` helper in `config.py` that returns current time in Central Time
 - All `datetime.now()` calls in app pages and scripts replaced with `now_ct()`
 - Affects: Predictions page date picker, main page date display, Model Accuracy date ranges, daily_update.py
@@ -297,7 +319,7 @@ launchctl list | grep nba-betting
 - Updated sidebar navigation to remove those entries, added Model Accuracy link
 
 **ESPN Scoreboard Fallback for Cloud Deployment:**
-- `stats.nba.com` blocks requests from cloud/datacenter IPs (e.g., Railway)
+- `stats.nba.com` blocks requests from cloud/datacenter IPs (e.g., Fly.io)
 - Refresh Data button on deployed app now falls back to ESPN's public scoreboard API
 - Flow: Try NBA API first → if empty, fetch from ESPN → match to DB games by team abbreviation → update statuses/scores
 - ESPN endpoint: `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=YYYYMMDD`
@@ -545,6 +567,7 @@ Negative values clamped to 0
 ## Current Priorities (from README Roadmap)
 
 ### Recently Completed
+- ✅ **Fly.io migration** - Persistent volume for SQLite, server-side cron, GitHub Actions CI/CD, DB removed from git
 - ✅ **UI refocus to predictions** - Removed value betting UI, main page now shows model picks immediately
 - ✅ **NBA API headers fix** - Akamai WAF required browser-like headers; added `NBA_API_HEADERS` to all `nba_api` calls
 - ✅ **NBA CDN backfill script** - Recover from NBA API outages using `cdn.nba.com` schedule data
@@ -557,7 +580,7 @@ Negative values clamped to 0
 - ✅ **O/D Elo test coverage** - 9 new tests covering all O/D Elo functions
 - ✅ **Dynamic league avg score** - Auto-updated from DB at runtime (was hardcoded, drifted ~1 point causing ~2pt low totals)
 - ✅ **Stale player impact cleanup** - Previous-season entries cleared on daily update
-- ✅ **ESPN scoreboard fallback** - Refresh button works on cloud deployments (Railway) where NBA API is blocked
+- ✅ **ESPN scoreboard fallback** - Refresh button works on cloud deployments (Fly.io) where NBA API is blocked
 - ✅ **Player impact USG% weighting** - Reduces team-context bias (Caruso 19→8, SGA stays 27)
 - ✅ **Negative impact clamping** - Bad players no longer penalize team when injured
 - ✅ **HCA recalibrated** - Reduced to 35 Elo based on actual 2025-26 data

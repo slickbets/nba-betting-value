@@ -13,6 +13,7 @@ from src.data.database import init_database, get_connection, get_games_by_date
 from src.models.predictor import predict_game
 from src.utils.update_status import get_last_run_info
 from src.utils.time_utils import convert_et_to_ct
+from src.utils.feedback import submit_feedback
 
 # Page configuration
 st.set_page_config(
@@ -104,6 +105,22 @@ def main():
         - **Model Accuracy** - Prediction tracking
         - **Team Ratings** - Elo rankings
         """)
+
+        st.markdown("---")
+        st.markdown("### Feedback")
+        with st.form("feedback_form", clear_on_submit=True):
+            fb_category = st.selectbox("Type", ["Bug", "Feature", "Improvement"])
+            fb_title = st.text_input("Title")
+            fb_description = st.text_area("Details", height=100)
+            fb_submitted = st.form_submit_button("Submit Feedback")
+            if fb_submitted:
+                if fb_title.strip():
+                    if submit_feedback(fb_title.strip(), fb_description.strip(), fb_category):
+                        st.success("Thanks! Feedback submitted.")
+                    else:
+                        st.error("Failed to submit. Try again later.")
+                else:
+                    st.warning("Please add a title.")
 
         st.markdown("---")
         st.markdown(

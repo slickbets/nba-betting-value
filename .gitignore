@@ -2,6 +2,8 @@
 .env
 
 # Database
+data/nba_betting.db
+data/.last_daily_update
 
 # Python
 __pycache__/

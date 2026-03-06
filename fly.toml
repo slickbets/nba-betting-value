@@ -1,0 +1,33 @@
+app = "nba-predictions-slick"
+primary_region = "ord"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  DATA_DIR = "/data"
+  DB_PATH = "/data/nba_betting.db"
+
+[mounts]
+  source = "nba_data"
+  destination = "/data"
+
+[[services]]
+  internal_port = 8501
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+[checks]
+  [checks.health]
+    port = 8501
+    type = "http"
+    interval = "30s"
+    timeout = "5s"
+    path = "/"
