@@ -13,9 +13,9 @@ class EloParams:
     """All tunable Elo model parameters."""
 
     # Core Elo
-    k_factor: float = 15.0
-    home_advantage: float = 35.0
-    spread_divisor: float = 25.0
+    k_factor: float = 14.0
+    home_advantage: float = 25.0
+    spread_divisor: float = 18.0
     initial_rating: float = 1500.0
     league_avg_score: float = 115.5
     season_regression_factor: float = 0.33
@@ -29,7 +29,7 @@ class EloParams:
     mov_max: float = 3.0
 
     # Rest day adjustments (Elo points)
-    rest_b2b: float = -25.0
+    rest_b2b: float = -35.0
     rest_normal: float = 0.0
     rest_2day: float = 5.0
     rest_3day: float = 8.0

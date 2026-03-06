@@ -44,6 +44,7 @@ def get_completed_games_with_predictions(start_date: str, end_date: str) -> pd.D
             g.away_score,
             g.predicted_home_win_prob,
             g.predicted_spread,
+            g.predicted_total,
             g.home_elo_pre,
             g.away_elo_pre,
             ht.abbreviation as home_team,
@@ -75,12 +76,20 @@ def calculate_accuracy_metrics(df: pd.DataFrame) -> dict:
     df['actual_margin'] = df['home_score'] - df['away_score']
     df['spread_error'] = abs(df['predicted_spread'] - df['actual_margin'])
     df['confidence'] = df['predicted_home_win_prob'].apply(lambda x: max(x, 1 - x))
+    df['actual_total'] = df['home_score'] + df['away_score']
+    df['has_predicted_total'] = df['predicted_total'].notna() & (df['predicted_total'] > 0)
+    df['total_error'] = abs(df['predicted_total'] - df['actual_total']).where(df['has_predicted_total'])
 
     total_games = len(df)
     correct_picks = df['correct_pick'].sum()
     pick_accuracy = correct_picks / total_games * 100 if total_games > 0 else 0
     avg_spread_error = df['spread_error'].mean()
     median_spread_error = df['spread_error'].median()
+
+    total_df = df[df['has_predicted_total']]
+    total_games_with_total = len(total_df)
+    avg_total_error = total_df['total_error'].mean() if total_games_with_total > 0 else None
+    median_total_error = total_df['total_error'].median() if total_games_with_total > 0 else None
 
     high_conf = df[df['confidence'] >= 0.65]
     med_conf = df[(df['confidence'] >= 0.55) & (df['confidence'] < 0.65)]
@@ -98,6 +107,9 @@ def calculate_accuracy_metrics(df: pd.DataFrame) -> dict:
         'med_conf_accuracy': med_conf['correct_pick'].mean() * 100 if len(med_conf) > 0 else 0,
         'low_conf_games': len(low_conf),
         'low_conf_accuracy': low_conf['correct_pick'].mean() * 100 if len(low_conf) > 0 else 0,
+        'total_games_with_total': total_games_with_total,
+        'avg_total_error': avg_total_error,
+        'median_total_error': median_total_error,
         'df': df,
     }
 
@@ -362,6 +374,58 @@ fig.update_layout(
     font=dict(family="Outfit, sans-serif", color="#E0DCD5"),
 )
 st.plotly_chart(fig, use_container_width=True)
+
+# Total error distribution
+if metrics['total_games_with_total'] and metrics['total_games_with_total'] > 0:
+    st.markdown('<hr class="section-rule">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Total (O/U) Error Distribution</div>', unsafe_allow_html=True)
+
+    total_col1, total_col2 = st.columns([1, 2])
+    with total_col1:
+        st.markdown(
+            f'<div class="stat-card">'
+            f'<div class="stat-card-value">{metrics["avg_total_error"]:.1f}</div>'
+            f'<div class="stat-card-label">Avg Total Error</div>'
+            f'<div class="stat-card-detail">{metrics["total_games_with_total"]} games</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.markdown("")
+        st.markdown(
+            f'<div class="stat-card">'
+            f'<div class="stat-card-value">{metrics["median_total_error"]:.1f}</div>'
+            f'<div class="stat-card-label">Median Total Error</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+    with total_col2:
+        total_df = df[df['has_predicted_total']].copy()
+        fig_total = px.histogram(
+            total_df,
+            x='total_error',
+            nbins=20,
+            labels={'total_error': 'Total Error (points)', 'count': 'Games'},
+            color_discrete_sequence=[ACCENT],
+        )
+        fig_total.add_vline(x=metrics['avg_total_error'], line_dash="dash", line_color=NEGATIVE,
+                            annotation_text=f"Avg: {metrics['avg_total_error']:.1f}")
+        fig_total.add_vline(x=metrics['median_total_error'], line_dash="dash", line_color=POSITIVE,
+                            annotation_text=f"Median: {metrics['median_total_error']:.1f}")
+        fig_total.update_layout(
+            template=PLOTLY_TEMPLATE,
+            height=300,
+            paper_bgcolor=CHART_BG,
+            plot_bgcolor=CHART_BG,
+            yaxis=dict(gridcolor=GRID_COLOR),
+            xaxis=dict(gridcolor=GRID_COLOR),
+            font=dict(family="Outfit, sans-serif", color="#E0DCD5"),
+        )
+        st.plotly_chart(fig_total, use_container_width=True)
+else:
+    st.markdown('<hr class="section-rule">', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">Total (O/U) Accuracy</div>', unsafe_allow_html=True)
+    st.caption("No predicted totals stored yet. Totals will start tracking with the next daily update.")
 
 # Home vs Away
 st.markdown('<hr class="section-rule">', unsafe_allow_html=True)

@@ -340,7 +340,8 @@ def predict_games_for_date(
                     update_game_predictions(
                         game_id=game['game_id'],
                         home_win_prob=pred.home_win_prob,
-                        predicted_spread=pred.predicted_spread
+                        predicted_spread=pred.predicted_spread,
+                        predicted_total=pred.predicted_total if pred.predicted_total else None,
                     )
 
     return predictions

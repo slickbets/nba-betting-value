@@ -26,10 +26,10 @@ DB_PATH = Path(os.getenv("DB_PATH", str(DATA_DIR / "nba_betting.db")))
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
 
 # Elo Parameters
-ELO_K_FACTOR = 15.0
-ELO_HOME_ADVANTAGE = 35.0  # ~1.4 points spread (based on 2025-26 actual home margin of +1.36)
+ELO_K_FACTOR = 14.0
+ELO_HOME_ADVANTAGE = 25.0  # ~1.4 points spread (sweep-optimized from 35)
 ELO_INITIAL_RATING = 1500.0
-ELO_SPREAD_DIVISOR = 25.0  # Elo diff / this = predicted spread
+ELO_SPREAD_DIVISOR = 18.0  # Elo diff / this = predicted spread (sweep-optimized from 25)
 
 # O/D Elo Parameters
 LEAGUE_AVG_SCORE = 115.5  # Fallback league avg PPG (auto-updated at runtime by daily_update)

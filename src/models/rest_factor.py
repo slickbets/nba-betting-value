@@ -14,9 +14,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Rest day Elo adjustments (in Elo points)
 # Based on research showing B2B teams win ~3-4% less often
-# 25 Elo = 1 point spread, so adjustments are meaningful but not extreme
+# 18 Elo = 1 point spread, so -35 = ~1.9 point penalty (sweep-optimized)
 REST_ADJUSTMENTS = {
-    0: -25,   # Back-to-back: ~1 point penalty
+    0: -35,   # Back-to-back: ~1.9 point penalty (sweep-optimized from -25)
     1: 0,     # Normal rest: no adjustment
     2: 5,     # Extra rest: slight boost
     3: 8,     # Well rested: moderate boost
