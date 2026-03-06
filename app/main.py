@@ -109,7 +109,7 @@ def main():
         st.markdown("---")
         st.markdown("### Feedback")
         with st.form("feedback_form", clear_on_submit=True):
-            fb_category = st.selectbox("Type", ["Bug", "Feature", "Improvement"])
+            fb_category = st.selectbox("Type", ["Bug", "Feature Request", "General Feedback"])
             fb_title = st.text_input("Title")
             fb_description = st.text_area("Details", height=100)
             fb_submitted = st.form_submit_button("Submit Feedback")

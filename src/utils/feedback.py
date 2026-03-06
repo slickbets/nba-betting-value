@@ -9,8 +9,8 @@ LINEAR_TEAM_ID = "6d369a5d-677b-417e-99ab-1451d967a214"
 # Label IDs from Linear
 LABEL_MAP = {
     "Bug": "78798ea5-8714-4a4c-bb98-4de4275fb9f8",
-    "Feature": "c82b7294-5d96-4384-8869-03e8c9b90997",
-    "Improvement": "df5416b2-5cc6-4ef6-b8d2-0a4879be1bf4",
+    "Feature Request": "c82b7294-5d96-4384-8869-03e8c9b90997",
+    "General Feedback": "ed7eb238-c3e6-4e95-bf49-077cdd756fb5",
 }
 
 
