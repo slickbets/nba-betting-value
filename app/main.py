@@ -102,6 +102,10 @@ def main():
         unsafe_allow_html=True
     )
 
+    st.markdown(
+        "💰 Enjoy the picks? **[Leave a tip](/Donate)** to help keep Slick Bets running."
+    )
+
     # Daily update status
     last_run = get_last_run_info()
     if last_run['ran_today']:
