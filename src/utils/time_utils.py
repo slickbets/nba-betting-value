@@ -12,10 +12,10 @@ def convert_et_to_ct(time_str: str) -> str:
     Returns:
         Time string like "6:00 PM CT"
     """
-    if not time_str or 'ET' not in time_str:
+    if not time_str or not re.search(r'E[SD]?T', time_str, re.IGNORECASE):
         return time_str
 
-    match = re.match(r'(\d{1,2}):(\d{2})\s*(am|pm)\s*ET', time_str.strip(), re.IGNORECASE)
+    match = re.match(r'(\d{1,2}):(\d{2})\s*(am|pm)\s*E[SD]?T', time_str.strip(), re.IGNORECASE)
     if not match:
         return time_str
 

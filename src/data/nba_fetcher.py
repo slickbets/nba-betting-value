@@ -609,8 +609,12 @@ def fetch_scoreboard_espn(game_date: str) -> list[dict]:
             game_time = None
             if status == "scheduled":
                 status_detail = comp.get("status", {}).get("type", {}).get("detail", "")
-                if "ET" in status_detail:
-                    game_time = status_detail.strip()
+                # ESPN returns formats like "Fri, March 6th at 7:00 PM EST"
+                # Extract time portion and normalize to "H:MM pm ET"
+                import re
+                time_match = re.search(r'(\d{1,2}:\d{2}\s*[AP]M)\s*(?:EST|EDT|ET)', status_detail, re.IGNORECASE)
+                if time_match:
+                    game_time = time_match.group(1).strip() + " ET"
 
             results.append({
                 "home_abbr": home_abbr,
