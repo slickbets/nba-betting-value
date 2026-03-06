@@ -19,7 +19,7 @@ from app.shared import render_sidebar, confidence_badge, result_badge
 # Page configuration
 st.set_page_config(
     page_title="Slick Bets",
-    page_icon="🏀",
+    page_icon="SB",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -29,7 +29,6 @@ def get_accuracy_stats():
     """Get season and recent accuracy stats."""
     try:
         with get_connection() as conn:
-            # Season accuracy
             season_df = pd.read_sql_query("""
                 SELECT
                     COUNT(*) as total,
@@ -45,7 +44,6 @@ def get_accuracy_stats():
                 AND predicted_home_win_prob IS NOT NULL
             """, conn)
 
-            # Last 7 days accuracy
             seven_days_ago = (now_ct() - timedelta(days=7)).strftime("%Y-%m-%d")
             recent_df = pd.read_sql_query("""
                 SELECT
@@ -73,8 +71,8 @@ def get_accuracy_stats():
         return 0, 0, 0, 0
 
 
-def render_game_card(pred, info):
-    """Render a single game as a styled card."""
+def render_game_row(pred, info):
+    """Render a single game as a styled row."""
     status = info.get('status', 'scheduled')
     game_time = info.get('time') or ''
     home_score = info.get('home_score')
@@ -95,27 +93,23 @@ def render_game_card(pred, info):
     else:
         confidence = "Low"
 
-    # Spread from winner's perspective
+    # Spread
     spread_val = -(pred.predicted_spread if predicted_winner == pred.home_team else -pred.predicted_spread)
-    spread_display = f"{predicted_winner} {spread_val:+.1f}"
+    spread_display = f"{predicted_winner}&nbsp;{spread_val:+.1f}"
 
     # Total
     predicted_total = getattr(pred, 'predicted_total', 0)
-    total_display = f"{predicted_total:.1f}" if predicted_total else "-"
+    total_display = f"{predicted_total:.1f}" if predicted_total else "&mdash;"
 
-    # Score / time display
+    # Time / score
     if status == 'final' and home_score is not None and away_score is not None:
-        score_html = f'<span class="score-final">{pred.away_team} {int(away_score)} - {int(home_score)} {pred.home_team}</span>'
-        time_html = '<span class="badge badge-correct" style="font-size: 0.7rem;">FINAL</span>'
+        time_html = f'<span class="game-score">{int(away_score)}&ndash;{int(home_score)}&nbsp;F</span>'
     elif status == 'in_progress' and home_score is not None and away_score is not None:
-        score_html = f'<span class="score-live">{pred.away_team} {int(away_score)} - {int(home_score)} {pred.home_team}</span>'
-        time_html = '<span class="badge badge-live" style="font-size: 0.7rem;">LIVE</span>'
+        time_html = f'<span class="game-score-live">{int(away_score)}&ndash;{int(home_score)}</span>'
     elif status == 'in_progress':
-        score_html = ''
-        time_html = '<span class="badge badge-live" style="font-size: 0.7rem;">LIVE</span>'
+        time_html = '<span class="result-live">LIVE</span>'
     else:
-        score_html = ''
-        time_html = f'<span class="game-card-time">{game_time}</span>' if game_time else ''
+        time_html = f'<span class="game-time">{game_time}</span>' if game_time else ''
 
     # Result
     if status == 'final' and home_score is not None and away_score is not None:
@@ -126,27 +120,21 @@ def render_game_card(pred, info):
     else:
         result = "-"
 
-    card_html = (
-        f'<div class="game-card">'
-        f'<div class="game-card-header">'
-        f'<span class="game-card-matchup">{pred.away_team} @ {pred.home_team}</span>'
-        f'{time_html}'
-        f'</div>'
-        f'<div style="margin-bottom: 0.6rem;">{score_html}</div>'
-        f'<div class="game-card-body">'
-        f'<div class="game-card-stat"><div class="game-card-stat-label">SB Pick</div><div class="game-card-stat-value">{predicted_winner}</div></div>'
-        f'<div class="game-card-stat"><div class="game-card-stat-label">Win Prob</div><div class="game-card-stat-value">{win_prob:.0%}</div></div>'
-        f'<div class="game-card-stat"><div class="game-card-stat-label">Confidence</div><div>{confidence_badge(confidence)}</div></div>'
-        f'<div class="game-card-stat"><div class="game-card-stat-label">Spread</div><div class="game-card-stat-value">{spread_display}</div></div>'
-        f'<div class="game-card-stat"><div class="game-card-stat-label">Total</div><div class="game-card-stat-value">{total_display}</div></div>'
-        f'<div class="game-card-stat"><div class="game-card-stat-label">Result</div><div>{result_badge(result)}</div></div>'
-        f'</div>'
+    row_html = (
+        f'<div class="game-row">'
+        f'<span class="game-matchup">{pred.away_team} @ {pred.home_team}</span>'
+        f'<span>{time_html}</span>'
+        f'<span class="game-pick">{predicted_winner}</span>'
+        f'<span class="game-num-accent">{win_prob:.0%}</span>'
+        f'<span class="game-num">{spread_display}</span>'
+        f'<span class="game-num">{total_display}</span>'
+        f'<span style="display:flex; align-items:center; gap:6px;">{confidence_badge(confidence)} {result_badge(result)}</span>'
         f'</div>'
     )
-    st.markdown(card_html, unsafe_allow_html=True)
+    st.markdown(row_html, unsafe_allow_html=True)
 
-    # Inline expandable details
-    with st.expander("Game Details", expanded=False):
+    # Expandable details
+    with st.expander("Details", expanded=False):
         det_col1, det_col2, det_col3 = st.columns(3)
 
         with det_col1:
@@ -237,20 +225,20 @@ def render_game_card(pred, info):
 def main():
     render_sidebar()
 
-    # Hero section
-    st.markdown('<div class="hero-title">Slick Bets</div>', unsafe_allow_html=True)
+    # Masthead
+    today = now_ct()
     st.markdown(
-        '<div class="hero-subtitle">'
-        'Data-driven NBA picks powered by Elo ratings, injury adjustments, and rest factors. '
-        'Our model analyzes every game to find where the edge is &mdash; updated daily.'
+        '<div class="masthead">'
+        '<div class="masthead-title">Slick Bets</div>'
+        f'<div class="masthead-dateline">{today.strftime("%B %d, %Y")}</div>'
+        '<div class="masthead-desc">'
+        'Elo-driven NBA predictions with injury adjustments and rest factors. Updated daily.'
+        '</div>'
+        '<div class="masthead-desc">'
+        'Enjoy the picks? <a href="/Donate">Leave a tip</a> to keep Slick Bets running.'
+        '</div>'
         '</div>',
-        unsafe_allow_html=True
-    )
-    st.markdown(
-        '<div class="hero-tip">'
-        'Enjoy the picks? <a href="/Donate">Leave a tip</a> to help keep Slick Bets running.'
-        '</div>',
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
     # Initialize database
@@ -260,83 +248,71 @@ def main():
         st.error(f"Database error: {e}")
         st.stop()
 
-    # Accuracy hero cards
+    # Accuracy strip
     season_total, season_correct, recent_total, recent_correct = get_accuracy_stats()
 
     if season_total > 0:
         season_pct = season_correct / season_total * 100
 
-        cols = st.columns(3)
-        with cols[0]:
-            st.markdown(
-                f'<div class="accuracy-card">'
-                f'<div class="accuracy-big">{season_pct:.1f}%</div>'
-                f'<div class="accuracy-label">Season Accuracy</div>'
-                f'<div class="accuracy-detail">{season_correct} / {season_total} picks</div>'
-                f'</div>',
-                unsafe_allow_html=True,
+        strip_parts = (
+            f'<div class="accuracy-stat">'
+            f'<span class="accuracy-stat-value">{season_pct:.1f}%</span>'
+            f'<span class="accuracy-stat-label">Season Accuracy</span>'
+            f'<span class="accuracy-stat-detail">{season_correct}/{season_total} picks</span>'
+            f'</div>'
+        )
+
+        if recent_total > 0:
+            recent_pct = recent_correct / recent_total * 100
+            strip_parts += (
+                f'<div class="accuracy-stat">'
+                f'<span class="accuracy-stat-value">{recent_pct:.1f}%</span>'
+                f'<span class="accuracy-stat-label">Last 7 Days</span>'
+                f'<span class="accuracy-stat-detail">{recent_correct}/{recent_total} picks</span>'
+                f'</div>'
+            )
+        else:
+            strip_parts += (
+                '<div class="accuracy-stat">'
+                '<span class="accuracy-stat-value">&mdash;</span>'
+                '<span class="accuracy-stat-label">Last 7 Days</span>'
+                '<span class="accuracy-stat-detail">No recent games</span>'
+                '</div>'
             )
 
-        with cols[1]:
-            if recent_total > 0:
-                recent_pct = recent_correct / recent_total * 100
-                st.markdown(
-                    f'<div class="accuracy-card">'
-                    f'<div class="accuracy-big">{recent_pct:.1f}%</div>'
-                    f'<div class="accuracy-label">Last 7 Days</div>'
-                    f'<div class="accuracy-detail">{recent_correct} / {recent_total} picks</div>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.markdown(
-                    '<div class="accuracy-card">'
-                    '<div class="accuracy-big">-</div>'
-                    '<div class="accuracy-label">Last 7 Days</div>'
-                    '<div class="accuracy-detail">No recent games</div>'
-                    '</div>',
-                    unsafe_allow_html=True,
-                )
+        # Model status
+        last_run = get_last_run_info()
+        if last_run['ran_today']:
+            status_text = f"Updated {last_run['last_run_time']}" if last_run['last_run_time'] else "Updated today"
+            status_color = "var(--positive)"
+        elif last_run['last_run_date']:
+            status_text = f"Last: {last_run['last_run_date']}"
+            status_color = "var(--accent)"
+        else:
+            status_text = "Never run"
+            status_color = "var(--negative)"
 
-        with cols[2]:
-            # Daily update status
-            last_run = get_last_run_info()
-            if last_run['ran_today']:
-                status_color = "#00C853"
-                status_icon = "&#10003;"
-                status_text = f"Updated {last_run['last_run_time']}" if last_run['last_run_time'] else "Updated today"
-            elif last_run['last_run_date']:
-                status_color = "#FFC107"
-                status_icon = "&#9888;"
-                status_text = f"Last: {last_run['last_run_date']}"
-            else:
-                status_color = "#F44336"
-                status_icon = "&#10007;"
-                status_text = "Never run"
-            st.markdown(
-                f'<div class="accuracy-card">'
-                f'<div class="accuracy-big" style="color: {status_color};">{status_icon}</div>'
-                f'<div class="accuracy-label">Model Status</div>'
-                f'<div class="accuracy-detail">{status_text}</div>'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+        strip_parts += (
+            f'<div class="accuracy-stat">'
+            f'<span class="accuracy-stat-value" style="color:{status_color};">&#10003;</span>'
+            f'<span class="accuracy-stat-label">Model Status</span>'
+            f'<span class="accuracy-stat-detail">{status_text}</span>'
+            f'</div>'
+        )
 
-    st.markdown("")
+        st.markdown(f'<div class="accuracy-strip">{strip_parts}</div>', unsafe_allow_html=True)
 
     # Date selector
     selected_date = st.date_input(
         "Select Date",
         value=now_ct().date(),
-        help="Choose a date to view predictions"
+        help="Choose a date to view predictions",
     )
     date_str = selected_date.strftime("%Y-%m-%d")
 
-    # Auto-refresh live scores from ESPN (cached 60s)
+    # Auto-refresh live scores
     if date_str == now_ct().strftime("%Y-%m-%d"):
         refresh_live_scores(date_str)
-
-    st.markdown("---")
 
     # Load games and predictions
     games_df = get_games_by_date(date_str)
@@ -387,24 +363,32 @@ def main():
         st.info("No predictions available for this date.")
         st.stop()
 
+    # Section header
+    st.markdown('<hr class="section-rule">', unsafe_allow_html=True)
     st.markdown(
-        f'<div class="section-header">{len(predictions)} Games &mdash; '
+        f'<div class="section-title">{len(predictions)} Games &mdash; '
         f'{selected_date.strftime("%B %d, %Y")}</div>',
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
-    # Render game cards in a 2-column grid
-    for i in range(0, len(predictions), 2):
-        cols = st.columns(2)
-        with cols[0]:
-            pred = predictions[i]
-            info = game_info.get(pred.game_id, {})
-            render_game_card(pred, info)
-        if i + 1 < len(predictions):
-            with cols[1]:
-                pred = predictions[i + 1]
-                info = game_info.get(pred.game_id, {})
-                render_game_card(pred, info)
+    # Column header
+    st.markdown(
+        '<div class="game-row-header">'
+        '<span>Matchup</span>'
+        '<span>Time</span>'
+        '<span>Pick</span>'
+        '<span>Prob</span>'
+        '<span>Spread</span>'
+        '<span>Total</span>'
+        '<span>Conf</span>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    # Game rows
+    for pred in predictions:
+        info = game_info.get(pred.game_id, {})
+        render_game_row(pred, info)
 
 
 if __name__ == "__main__":
