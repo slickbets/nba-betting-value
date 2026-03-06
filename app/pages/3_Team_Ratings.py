@@ -17,8 +17,10 @@ from src.data.database import (
     get_team_elo_history,
 )
 from config import ELO_INITIAL_RATING
+from app.shared import render_sidebar
 
 st.set_page_config(page_title="Team Ratings | Slick Bets", page_icon="🏆", layout="wide")
+render_sidebar()
 
 st.title("🏆 Team Ratings")
 st.markdown("Current Elo ratings and historical performance for all NBA teams.")

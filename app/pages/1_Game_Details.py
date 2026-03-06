@@ -16,8 +16,10 @@ from src.utils.update_status import get_last_run_info
 from src.utils.live_scores import refresh_live_scores
 from src.data.odds_fetcher import get_current_odds
 from src.models.predictor import predict_game, predictions_to_dataframe, clear_injuries_cache
+from app.shared import render_sidebar
 
 st.set_page_config(page_title="Game Details | Slick Bets", page_icon="🏀", layout="wide")
+render_sidebar()
 
 st.title("🏀 Game Details")
 st.markdown("Detailed Elo breakdowns, injury impacts, rest factors, and sportsbook odds.")
@@ -178,21 +180,12 @@ if not pred_df.empty:
     # Add game times to the predictions dataframe
     pred_df['game_time'] = pred_df['game_id'].map(game_times)
 
-    # Build display columns based on injury data availability
-    base_cols = ['game_time', 'matchup', 'home_elo', 'away_elo', 'home_win_prob', 'away_win_prob',
+    # Build display columns
+    base_cols = ['game_time', 'matchup', 'favorite', 'home_win_prob', 'away_win_prob',
                  'spread_display', 'home_fair_odds', 'away_fair_odds']
 
     display_df = pred_df[base_cols].copy()
     display_df['game_time'] = display_df['game_time'].fillna('-')
-
-    # Add injury adjustment columns if applicable
-    if apply_injuries and 'home_injury_adj' in pred_df.columns:
-        display_df['home_inj'] = pred_df['home_injury_adj'].apply(
-            lambda x: f"{x:+.0f}" if x != 0 else "-"
-        )
-        display_df['away_inj'] = pred_df['away_injury_adj'].apply(
-            lambda x: f"{x:+.0f}" if x != 0 else "-"
-        )
 
     # Add rest days columns if available
     if 'home_rest_days' in pred_df.columns and 'away_rest_days' in pred_df.columns:
@@ -213,20 +206,19 @@ if not pred_df.empty:
 
     display_df['home_win_prob'] = display_df['home_win_prob'].apply(lambda x: f"{x:.1%}")
     display_df['away_win_prob'] = display_df['away_win_prob'].apply(lambda x: f"{x:.1%}")
+    display_df['home_fair_odds'] = display_df['home_fair_odds'].apply(lambda x: f"{int(x):+d}")
+    display_df['away_fair_odds'] = display_df['away_fair_odds'].apply(lambda x: f"{int(x):+d}")
 
     column_rename = {
         'game_time': 'Time (CT)',
         'matchup': 'Game',
-        'home_elo': 'Home Elo',
-        'away_elo': 'Away Elo',
+        'favorite': 'SB Model Pick',
         'home_win_prob': 'Home Win%',
         'away_win_prob': 'Away Win%',
-        'spread_display': 'Spread',
-        'predicted_total': 'Total',
+        'spread_display': 'Predicted Spread',
+        'predicted_total': 'Predicted Total',
         'home_fair_odds': 'Home Fair Odds',
         'away_fair_odds': 'Away Fair Odds',
-        'home_inj': 'Home Inj',
-        'away_inj': 'Away Inj',
         'home_rest': 'Home Rest',
         'away_rest': 'Away Rest',
     }

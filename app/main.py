@@ -13,8 +13,8 @@ from src.data.database import init_database, get_connection, get_games_by_date
 from src.models.predictor import predict_game
 from src.utils.update_status import get_last_run_info
 from src.utils.time_utils import convert_et_to_ct
-from src.utils.feedback import submit_feedback
 from src.utils.live_scores import refresh_live_scores
+from app.shared import render_sidebar
 
 # Page configuration
 st.set_page_config(
@@ -90,44 +90,7 @@ def get_accuracy_stats():
 
 
 def main():
-    # Sidebar
-    with st.sidebar:
-        st.title("🏀 Slick Bets")
-        st.markdown("---")
-
-        st.markdown(f"**Season:** {CURRENT_SEASON}")
-        st.markdown(f"**Date:** {now_ct().strftime('%B %d, %Y')}")
-
-        st.markdown("---")
-        st.markdown("### Navigation")
-        st.markdown("""
-        - **Home** - Today's predictions
-        - **Game Details** - Elo breakdowns & odds
-        - **Model Accuracy** - Prediction tracking
-        - **Team Ratings** - Elo rankings
-        """)
-
-        st.markdown("---")
-        st.markdown("### Feedback")
-        with st.form("feedback_form", clear_on_submit=True):
-            fb_category = st.selectbox("Type", ["Bug", "Feature Request", "General Feedback"])
-            fb_title = st.text_input("Title")
-            fb_description = st.text_area("Details", height=100)
-            fb_submitted = st.form_submit_button("Submit Feedback")
-            if fb_submitted:
-                if fb_title.strip():
-                    if submit_feedback(fb_title.strip(), fb_description.strip(), fb_category):
-                        st.success("Thanks! Feedback submitted.")
-                    else:
-                        st.error("Failed to submit. Try again later.")
-                else:
-                    st.warning("Please add a title.")
-
-        st.markdown("---")
-        st.markdown(
-            "Built with [Streamlit](https://streamlit.io) | "
-            "Data: [nba_api](https://github.com/swar/nba_api)"
-        )
+    render_sidebar()
 
     # Main content
     st.markdown('<p class="main-header">Slick Bets</p>', unsafe_allow_html=True)
@@ -279,14 +242,18 @@ def main():
         else:
             result = "-"
 
+        predicted_total = getattr(pred, 'predicted_total', 0)
+        total_display = f"{predicted_total:.1f}" if predicted_total else "-"
+
         picks_data.append({
             'Matchup': f"{pred.away_team} @ {pred.home_team}",
-            'Slick Bets Model Pick': f"{predicted_winner}",
-            'Win Prob': f"{win_prob:.1%}",
+            'SB Model Pick': f"{predicted_winner}",
+            'SB Win Prob': f"{win_prob:.1%}",
             'Confidence': confidence,
-            'Spread': f"{predicted_winner} {-(pred.predicted_spread if predicted_winner == pred.home_team else -pred.predicted_spread):+.1f}",
+            'Predicted Spread': f"{predicted_winner} {-(pred.predicted_spread if predicted_winner == pred.home_team else -pred.predicted_spread):+.1f}",
+            'Predicted Total': total_display,
             'Score': score,
-            'Result': result,
+            'W/L Pred Result': result,
         })
 
     picks_df = pd.DataFrame(picks_data)

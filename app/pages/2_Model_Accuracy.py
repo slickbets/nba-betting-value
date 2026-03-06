@@ -12,8 +12,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config import now_ct
 from src.data.database import init_database, get_connection
+from app.shared import render_sidebar
 
 st.set_page_config(page_title="Model Accuracy | Slick Bets", page_icon="🎯", layout="wide")
+render_sidebar()
 
 st.title("🎯 Model Accuracy")
 st.markdown("Track how well the model predicts game outcomes.")
