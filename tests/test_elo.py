@@ -68,15 +68,15 @@ class TestEloSpread:
         spread = elo_to_spread(1500, 1500)
         assert spread > 0  # Home team favored
 
-    def test_100_elo_advantage_gives_about_4_points(self):
-        """100 Elo advantage should be roughly 4 point spread."""
+    def test_100_elo_advantage_gives_about_5_5_points(self):
+        """100 Elo advantage should be roughly 5.6 point spread (100/18)."""
         spread = elo_to_spread(1600, 1500, home_advantage=0)
-        assert 3.5 < spread < 4.5
+        assert 5.0 < spread < 6.0
 
-    def test_200_elo_advantage_gives_about_8_points(self):
-        """200 Elo advantage should be roughly 8 point spread."""
+    def test_200_elo_advantage_gives_about_11_points(self):
+        """200 Elo advantage should be roughly 11.1 point spread (200/18)."""
         spread = elo_to_spread(1700, 1500, home_advantage=0)
-        assert 7.5 < spread < 8.5
+        assert 10.5 < spread < 11.5
 
     def test_negative_spread_when_away_team_better(self):
         """Away team with higher Elo should have negative spread."""

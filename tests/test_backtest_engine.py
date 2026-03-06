@@ -105,7 +105,7 @@ class TestSpread:
     def test_100_elo_diff(self, prod_params):
         params = EloParams(home_advantage=0)
         spread = _elo_to_spread(1600, 1500, params)
-        assert 3.5 < spread < 4.5
+        assert 5.0 < spread < 6.0  # 100/18 = 5.56
 
     def test_matches_production(self, prod_params):
         from src.models.elo import elo_to_spread
@@ -241,9 +241,9 @@ class TestEloParams:
 
     def test_production_defaults(self):
         p = EloParams.production()
-        assert p.k_factor == 15.0
-        assert p.home_advantage == 35.0
-        assert p.spread_divisor == 25.0
+        assert p.k_factor == 14.0
+        assert p.home_advantage == 25.0
+        assert p.spread_divisor == 18.0
 
     def test_home_advantage_points(self):
         p = EloParams(home_advantage=35, spread_divisor=25)
@@ -263,7 +263,7 @@ class TestEloParams:
 
     def test_rest_adjustment(self):
         p = EloParams.production()
-        assert p.rest_adjustment(0) == -25.0
+        assert p.rest_adjustment(0) == -35.0
         assert p.rest_adjustment(1) == 0.0
         assert p.rest_adjustment(2) == 5.0
         assert p.rest_adjustment(3) == 8.0
