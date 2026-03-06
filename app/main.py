@@ -18,7 +18,7 @@ from src.utils.live_scores import refresh_live_scores
 
 # Page configuration
 st.set_page_config(
-    page_title="NBA Game Predictions",
+    page_title="Slick Bets",
     page_icon="🏀",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -92,7 +92,7 @@ def get_accuracy_stats():
 def main():
     # Sidebar
     with st.sidebar:
-        st.title("🏀 NBA Predictions")
+        st.title("🏀 Slick Bets")
         st.markdown("---")
 
         st.markdown(f"**Season:** {CURRENT_SEASON}")
@@ -130,10 +130,11 @@ def main():
         )
 
     # Main content
-    st.markdown('<p class="main-header">NBA Game Predictions</p>', unsafe_allow_html=True)
+    st.markdown('<p class="main-header">Slick Bets</p>', unsafe_allow_html=True)
     st.markdown(
         '<p class="sub-header">'
-        'Elo-based win probability predictions for today\'s NBA games'
+        'Data-driven NBA picks powered by Elo ratings, injury adjustments, and rest factors. '
+        'Our model analyzes every game to find where the edge is — updated daily.'
         '</p>',
         unsafe_allow_html=True
     )

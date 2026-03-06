@@ -17,7 +17,7 @@ from src.utils.live_scores import refresh_live_scores
 from src.data.odds_fetcher import get_current_odds
 from src.models.predictor import predict_game, predictions_to_dataframe, clear_injuries_cache
 
-st.set_page_config(page_title="Game Details", page_icon="🏀", layout="wide")
+st.set_page_config(page_title="Game Details | Slick Bets", page_icon="🏀", layout="wide")
 
 st.title("🏀 Game Details")
 st.markdown("Detailed Elo breakdowns, injury impacts, rest factors, and sportsbook odds.")

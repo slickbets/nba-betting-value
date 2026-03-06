@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from config import now_ct
 from src.data.database import init_database, get_connection
 
-st.set_page_config(page_title="Model Accuracy", page_icon="🎯", layout="wide")
+st.set_page_config(page_title="Model Accuracy | Slick Bets", page_icon="🎯", layout="wide")
 
 st.title("🎯 Model Accuracy")
 st.markdown("Track how well the model predicts game outcomes.")

@@ -18,7 +18,7 @@ from src.data.database import (
 )
 from config import ELO_INITIAL_RATING
 
-st.set_page_config(page_title="Team Ratings", page_icon="🏆", layout="wide")
+st.set_page_config(page_title="Team Ratings | Slick Bets", page_icon="🏆", layout="wide")
 
 st.title("🏆 Team Ratings")
 st.markdown("Current Elo ratings and historical performance for all NBA teams.")
