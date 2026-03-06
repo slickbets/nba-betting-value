@@ -14,7 +14,7 @@ from src.models.predictor import predict_game
 from src.utils.update_status import get_last_run_info
 from src.utils.time_utils import convert_et_to_ct
 from src.utils.live_scores import refresh_live_scores
-from app.shared import render_sidebar
+from app.shared import render_sidebar, confidence_badge, result_badge
 
 # Page configuration
 st.set_page_config(
@@ -23,22 +23,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-# Custom CSS
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        margin-bottom: 0.5rem;
-    }
-    .sub-header {
-        font-size: 1.2rem;
-        color: #666;
-        margin-bottom: 2rem;
-    }
-</style>
-""", unsafe_allow_html=True)
 
 
 def get_accuracy_stats():
@@ -89,34 +73,205 @@ def get_accuracy_stats():
         return 0, 0, 0, 0
 
 
+def render_game_card(pred, info):
+    """Render a single game as a styled card."""
+    status = info.get('status', 'scheduled')
+    game_time = info.get('time') or ''
+    home_score = info.get('home_score')
+    away_score = info.get('away_score')
+
+    # Pick + confidence
+    if pred.home_win_prob > 0.5:
+        predicted_winner = pred.home_team
+        win_prob = pred.home_win_prob
+    else:
+        predicted_winner = pred.away_team
+        win_prob = pred.away_win_prob
+
+    if win_prob >= 0.65:
+        confidence = "High"
+    elif win_prob >= 0.55:
+        confidence = "Medium"
+    else:
+        confidence = "Low"
+
+    # Spread from winner's perspective
+    spread_val = -(pred.predicted_spread if predicted_winner == pred.home_team else -pred.predicted_spread)
+    spread_display = f"{predicted_winner} {spread_val:+.1f}"
+
+    # Total
+    predicted_total = getattr(pred, 'predicted_total', 0)
+    total_display = f"{predicted_total:.1f}" if predicted_total else "-"
+
+    # Score / time display
+    if status == 'final' and home_score is not None and away_score is not None:
+        score_html = f'<span class="score-final">{pred.away_team} {int(away_score)} - {int(home_score)} {pred.home_team}</span>'
+        time_html = '<span class="badge badge-correct" style="font-size: 0.7rem;">FINAL</span>'
+    elif status == 'in_progress' and home_score is not None and away_score is not None:
+        score_html = f'<span class="score-live">{pred.away_team} {int(away_score)} - {int(home_score)} {pred.home_team}</span>'
+        time_html = '<span class="badge badge-live" style="font-size: 0.7rem;">LIVE</span>'
+    elif status == 'in_progress':
+        score_html = ''
+        time_html = '<span class="badge badge-live" style="font-size: 0.7rem;">LIVE</span>'
+    else:
+        score_html = ''
+        time_html = f'<span class="game-card-time">{game_time}</span>' if game_time else ''
+
+    # Result
+    if status == 'final' and home_score is not None and away_score is not None:
+        actual_winner = pred.home_team if int(home_score) > int(away_score) else pred.away_team
+        result = "Correct" if actual_winner == predicted_winner else "Wrong"
+    elif status == 'in_progress':
+        result = "Live"
+    else:
+        result = "-"
+
+    card_html = f"""
+    <div class="game-card">
+        <div class="game-card-header">
+            <span class="game-card-matchup">{pred.away_team} @ {pred.home_team}</span>
+            {time_html}
+        </div>
+        <div style="margin-bottom: 0.6rem;">
+            {score_html}
+        </div>
+        <div class="game-card-body">
+            <div class="game-card-stat">
+                <div class="game-card-stat-label">SB Pick</div>
+                <div class="game-card-stat-value">{predicted_winner}</div>
+            </div>
+            <div class="game-card-stat">
+                <div class="game-card-stat-label">Win Prob</div>
+                <div class="game-card-stat-value">{win_prob:.0%}</div>
+            </div>
+            <div class="game-card-stat">
+                <div class="game-card-stat-label">Confidence</div>
+                <div>{confidence_badge(confidence)}</div>
+            </div>
+            <div class="game-card-stat">
+                <div class="game-card-stat-label">Spread</div>
+                <div class="game-card-stat-value">{spread_display}</div>
+            </div>
+            <div class="game-card-stat">
+                <div class="game-card-stat-label">Total</div>
+                <div class="game-card-stat-value">{total_display}</div>
+            </div>
+            <div class="game-card-stat">
+                <div class="game-card-stat-label">Result</div>
+                <div>{result_badge(result)}</div>
+            </div>
+        </div>
+    </div>
+    """
+    st.markdown(card_html, unsafe_allow_html=True)
+
+    # Inline expandable details
+    with st.expander("Game Details", expanded=False):
+        det_col1, det_col2, det_col3 = st.columns(3)
+
+        with det_col1:
+            st.markdown(f"**{pred.home_team} (Home)**")
+            home_rest_applied = getattr(pred, 'rest_applied', False)
+            home_rest_adj = getattr(pred, 'home_rest_adjustment', 0)
+            home_rest_days = getattr(pred, 'home_rest_days', 1)
+            has_home_adj = (pred.injuries_applied and pred.home_injury_adjustment != 0) or \
+                          (home_rest_applied and home_rest_adj != 0)
+            if has_home_adj:
+                st.write(f"Base Elo: {pred.home_elo_base:.0f}")
+                if pred.injuries_applied and pred.home_injury_adjustment != 0:
+                    st.write(f"Injury Adj: {pred.home_injury_adjustment:+.0f}")
+                if home_rest_applied and home_rest_adj != 0:
+                    rest_label = "B2B" if home_rest_days == 0 else f"{home_rest_days}d rest"
+                    st.write(f"Rest Adj ({rest_label}): {home_rest_adj:+.0f}")
+                st.write(f"**Adj Elo: {pred.home_elo:.0f}**")
+            else:
+                st.write(f"Elo: {pred.home_elo:.0f}")
+                if home_rest_applied:
+                    st.caption(f"Rest: {home_rest_days} days")
+            if getattr(pred, 'od_elo_applied', False):
+                home_o = getattr(pred, 'home_offense_elo', 0)
+                home_d = getattr(pred, 'home_defense_elo', 0)
+                if home_o and home_d:
+                    st.caption(f"O-Elo: {home_o:.0f} | D-Elo: {home_d:.0f}")
+            st.write(f"Win Prob: {pred.home_win_prob:.1%}")
+
+        with det_col2:
+            st.markdown(f"**{pred.away_team} (Away)**")
+            away_rest_applied = getattr(pred, 'rest_applied', False)
+            away_rest_adj = getattr(pred, 'away_rest_adjustment', 0)
+            away_rest_days = getattr(pred, 'away_rest_days', 1)
+            has_away_adj = (pred.injuries_applied and pred.away_injury_adjustment != 0) or \
+                          (away_rest_applied and away_rest_adj != 0)
+            if has_away_adj:
+                st.write(f"Base Elo: {pred.away_elo_base:.0f}")
+                if pred.injuries_applied and pred.away_injury_adjustment != 0:
+                    st.write(f"Injury Adj: {pred.away_injury_adjustment:+.0f}")
+                if away_rest_applied and away_rest_adj != 0:
+                    rest_label = "B2B" if away_rest_days == 0 else f"{away_rest_days}d rest"
+                    st.write(f"Rest Adj ({rest_label}): {away_rest_adj:+.0f}")
+                st.write(f"**Adj Elo: {pred.away_elo:.0f}**")
+            else:
+                st.write(f"Elo: {pred.away_elo:.0f}")
+                if away_rest_applied:
+                    st.caption(f"Rest: {away_rest_days} days")
+            if getattr(pred, 'od_elo_applied', False):
+                away_o = getattr(pred, 'away_offense_elo', 0)
+                away_d = getattr(pred, 'away_defense_elo', 0)
+                if away_o and away_d:
+                    st.caption(f"O-Elo: {away_o:.0f} | D-Elo: {away_d:.0f}")
+            st.write(f"Win Prob: {pred.away_win_prob:.1%}")
+
+        with det_col3:
+            st.markdown("**Prediction**")
+            if pred.predicted_spread > 0:
+                spread_str = f"{pred.home_team} by {pred.predicted_spread:.1f}"
+            else:
+                spread_str = f"{pred.away_team} by {abs(pred.predicted_spread):.1f}"
+            st.write(f"Spread: {spread_str}")
+            if getattr(pred, 'od_elo_applied', False) and getattr(pred, 'predicted_total', 0):
+                st.write(f"Predicted Total: {pred.predicted_total:.1f}")
+
+        # Injury details
+        if pred.injuries_applied and (pred.home_injuries or pred.away_injuries):
+            st.markdown("---")
+            st.markdown("**Injury Report**")
+            inj_c1, inj_c2 = st.columns(2)
+            with inj_c1:
+                if pred.home_injuries:
+                    st.markdown(f"*{pred.home_team}:*")
+                    for inj in pred.home_injuries:
+                        if abs(inj.get('elo_impact', 0)) >= 5:
+                            st.caption(f"* {inj['player_name']} ({inj.get('status', 'Out')}): {inj.get('elo_impact', 0):+.0f} Elo")
+                else:
+                    st.caption(f"{pred.home_team}: No significant injuries")
+            with inj_c2:
+                if pred.away_injuries:
+                    st.markdown(f"*{pred.away_team}:*")
+                    for inj in pred.away_injuries:
+                        if abs(inj.get('elo_impact', 0)) >= 5:
+                            st.caption(f"* {inj['player_name']} ({inj.get('status', 'Out')}): {inj.get('elo_impact', 0):+.0f} Elo")
+                else:
+                    st.caption(f"{pred.away_team}: No significant injuries")
+
+
 def main():
     render_sidebar()
 
-    # Main content
-    st.markdown('<p class="main-header">Slick Bets</p>', unsafe_allow_html=True)
+    # Hero section
+    st.markdown('<div class="hero-title">Slick Bets</div>', unsafe_allow_html=True)
     st.markdown(
-        '<p class="sub-header">'
+        '<div class="hero-subtitle">'
         'Data-driven NBA picks powered by Elo ratings, injury adjustments, and rest factors. '
-        'Our model analyzes every game to find where the edge is — updated daily.'
-        '</p>',
+        'Our model analyzes every game to find where the edge is &mdash; updated daily.'
+        '</div>',
         unsafe_allow_html=True
     )
-
     st.markdown(
-        "💰 Enjoy the picks? **[Leave a tip](/Donate)** to help keep Slick Bets running."
+        '<div class="hero-tip">'
+        'Enjoy the picks? <a href="/Donate">Leave a tip</a> to help keep Slick Bets running.'
+        '</div>',
+        unsafe_allow_html=True
     )
-
-    # Daily update status
-    last_run = get_last_run_info()
-    if last_run['ran_today']:
-        if last_run['last_run_time']:
-            st.success(f"Model updated today at {last_run['last_run_time']}")
-        else:
-            st.success("Model updated today")
-    elif last_run['last_run_date']:
-        st.warning(f"Model last updated: {last_run['last_run_date']} — Run `daily_update.py` for fresh predictions")
-    else:
-        st.error("Daily update has never run — Run `python scripts/daily_update.py` to initialize")
 
     # Initialize database
     try:
@@ -125,16 +280,65 @@ def main():
         st.error(f"Database error: {e}")
         st.stop()
 
-    # Accuracy summary
+    # Accuracy hero cards
     season_total, season_correct, recent_total, recent_correct = get_accuracy_stats()
 
     if season_total > 0:
         season_pct = season_correct / season_total * 100
-        accuracy_parts = [f"**Season:** {season_pct:.1f}% accurate ({season_correct}/{season_total})"]
-        if recent_total > 0:
-            recent_pct = recent_correct / recent_total * 100
-            accuracy_parts.append(f"**Last 7 days:** {recent_pct:.1f}% ({recent_correct}/{recent_total})")
-        st.markdown(" | ".join(accuracy_parts))
+
+        cols = st.columns(3)
+        with cols[0]:
+            st.markdown(f"""
+            <div class="accuracy-card">
+                <div class="accuracy-big">{season_pct:.1f}%</div>
+                <div class="accuracy-label">Season Accuracy</div>
+                <div class="accuracy-detail">{season_correct} / {season_total} picks</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        with cols[1]:
+            if recent_total > 0:
+                recent_pct = recent_correct / recent_total * 100
+                st.markdown(f"""
+                <div class="accuracy-card">
+                    <div class="accuracy-big">{recent_pct:.1f}%</div>
+                    <div class="accuracy-label">Last 7 Days</div>
+                    <div class="accuracy-detail">{recent_correct} / {recent_total} picks</div>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class="accuracy-card">
+                    <div class="accuracy-big">-</div>
+                    <div class="accuracy-label">Last 7 Days</div>
+                    <div class="accuracy-detail">No recent games</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+        with cols[2]:
+            # Daily update status
+            last_run = get_last_run_info()
+            if last_run['ran_today']:
+                status_color = "#00C853"
+                status_icon = "&#10003;"
+                status_text = f"Updated {last_run['last_run_time']}" if last_run['last_run_time'] else "Updated today"
+            elif last_run['last_run_date']:
+                status_color = "#FFC107"
+                status_icon = "&#9888;"
+                status_text = f"Last: {last_run['last_run_date']}"
+            else:
+                status_color = "#F44336"
+                status_icon = "&#10007;"
+                status_text = "Never run"
+            st.markdown(f"""
+            <div class="accuracy-card">
+                <div class="accuracy-big" style="color: {status_color};">{status_icon}</div>
+                <div class="accuracy-label">Model Status</div>
+                <div class="accuracy-detail">{status_text}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("")
 
     # Date selector
     selected_date = st.date_input(
@@ -158,7 +362,7 @@ def main():
         st.stop()
 
     predictions = []
-    game_info = {}  # game_id -> {time, status, home_score, away_score}
+    game_info = {}
 
     for _, game in games_df.iterrows():
         pred = predict_game(
@@ -199,69 +403,24 @@ def main():
         st.info("No predictions available for this date.")
         st.stop()
 
-    st.markdown(f"### {len(predictions)} Games")
+    st.markdown(
+        f'<div class="section-header">{len(predictions)} Games &mdash; '
+        f'{selected_date.strftime("%B %d, %Y")}</div>',
+        unsafe_allow_html=True
+    )
 
-    # Model Picks table
-    picks_data = []
-    for pred in predictions:
-        info = game_info.get(pred.game_id, {})
-        game_time = info.get('time') or '-'
-        status = info.get('status', 'scheduled')
-
-        if pred.home_win_prob > 0.5:
-            predicted_winner = pred.home_team
-            win_prob = pred.home_win_prob
-        else:
-            predicted_winner = pred.away_team
-            win_prob = pred.away_win_prob
-
-        if win_prob >= 0.65:
-            confidence = "High"
-        elif win_prob >= 0.55:
-            confidence = "Medium"
-        else:
-            confidence = "Low"
-
-        # Score column: time, live score, or final score
-        home_score = info.get('home_score')
-        away_score = info.get('away_score')
-        if status == 'final' and home_score is not None and away_score is not None:
-            score = f"{pred.away_team} {int(away_score)} - {int(home_score)} {pred.home_team} (Final)"
-        elif status == 'in_progress' and home_score is not None and away_score is not None:
-            score = f"{pred.away_team} {int(away_score)} - {int(home_score)} {pred.home_team} (Live)"
-        elif status == 'in_progress':
-            score = "In Progress"
-        else:
-            score = game_time
-
-        # Result column
-        if status == 'final' and home_score is not None and away_score is not None:
-            if int(home_score) > int(away_score):
-                actual_winner = pred.home_team
-            else:
-                actual_winner = pred.away_team
-            result = "Correct" if actual_winner == predicted_winner else "Wrong"
-        elif status == 'in_progress':
-            result = "Live"
-        else:
-            result = "-"
-
-        predicted_total = getattr(pred, 'predicted_total', 0)
-        total_display = f"{predicted_total:.1f}" if predicted_total else "-"
-
-        picks_data.append({
-            'Matchup': f"{pred.away_team} @ {pred.home_team}",
-            'SB Model Pick': f"{predicted_winner}",
-            'SB Win Prob': f"{win_prob:.1%}",
-            'Confidence': confidence,
-            'Predicted Spread': f"{predicted_winner} {-(pred.predicted_spread if predicted_winner == pred.home_team else -pred.predicted_spread):+.1f}",
-            'Predicted Total': total_display,
-            'Score': score,
-            'W/L Pred Result': result,
-        })
-
-    picks_df = pd.DataFrame(picks_data)
-    st.dataframe(picks_df, use_container_width=True, hide_index=True)
+    # Render game cards in a 2-column grid
+    for i in range(0, len(predictions), 2):
+        cols = st.columns(2)
+        with cols[0]:
+            pred = predictions[i]
+            info = game_info.get(pred.game_id, {})
+            render_game_card(pred, info)
+        if i + 1 < len(predictions):
+            with cols[1]:
+                pred = predictions[i + 1]
+                info = game_info.get(pred.game_id, {})
+                render_game_card(pred, info)
 
 
 if __name__ == "__main__":

@@ -12,13 +12,21 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from config import now_ct
 from src.data.database import init_database, get_connection
-from app.shared import render_sidebar
+from app.shared import render_sidebar, confidence_badge, result_badge
+
+# Dark plotly template
+PLOTLY_TEMPLATE = "plotly_dark"
+CHART_BG = "rgba(0,0,0,0)"
+GRID_COLOR = "rgba(255,255,255,0.08)"
+GREEN = "#00C853"
+YELLOW = "#FFC107"
+RED = "#F44336"
 
 st.set_page_config(page_title="Model Accuracy | Slick Bets", page_icon="🎯", layout="wide")
 render_sidebar()
 
-st.title("🎯 Model Accuracy")
-st.markdown("Track how well the model predicts game outcomes.")
+st.markdown('<div class="hero-title" style="font-size:2rem;">Model Accuracy</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-subtitle" style="font-size:0.95rem;">Track how well the model predicts game outcomes.</div>', unsafe_allow_html=True)
 
 # Initialize database
 init_database()
@@ -60,39 +68,23 @@ def calculate_accuracy_metrics(df: pd.DataFrame) -> dict:
     if df.empty:
         return {}
 
-    # Determine actual winner and predicted winner
     df = df.copy()
     df['home_won'] = df['home_score'] > df['away_score']
     df['predicted_home_win'] = df['predicted_home_win_prob'] > 0.5
     df['correct_pick'] = df['home_won'] == df['predicted_home_win']
-
-    # Actual margin (positive = home win)
     df['actual_margin'] = df['home_score'] - df['away_score']
-
-    # Spread error (how far off was the predicted spread)
     df['spread_error'] = abs(df['predicted_spread'] - df['actual_margin'])
+    df['confidence'] = df['predicted_home_win_prob'].apply(lambda x: max(x, 1 - x))
 
-    # Confidence buckets
-    df['confidence'] = df['predicted_home_win_prob'].apply(
-        lambda x: max(x, 1 - x)  # Distance from 50%
-    )
-
-    # Calculate metrics
     total_games = len(df)
     correct_picks = df['correct_pick'].sum()
     pick_accuracy = correct_picks / total_games * 100 if total_games > 0 else 0
-
     avg_spread_error = df['spread_error'].mean()
     median_spread_error = df['spread_error'].median()
 
-    # Accuracy by confidence level
     high_conf = df[df['confidence'] >= 0.65]
     med_conf = df[(df['confidence'] >= 0.55) & (df['confidence'] < 0.65)]
     low_conf = df[df['confidence'] < 0.55]
-
-    high_conf_accuracy = high_conf['correct_pick'].mean() * 100 if len(high_conf) > 0 else 0
-    med_conf_accuracy = med_conf['correct_pick'].mean() * 100 if len(med_conf) > 0 else 0
-    low_conf_accuracy = low_conf['correct_pick'].mean() * 100 if len(low_conf) > 0 else 0
 
     return {
         'total_games': total_games,
@@ -101,22 +93,19 @@ def calculate_accuracy_metrics(df: pd.DataFrame) -> dict:
         'avg_spread_error': avg_spread_error,
         'median_spread_error': median_spread_error,
         'high_conf_games': len(high_conf),
-        'high_conf_accuracy': high_conf_accuracy,
+        'high_conf_accuracy': high_conf['correct_pick'].mean() * 100 if len(high_conf) > 0 else 0,
         'med_conf_games': len(med_conf),
-        'med_conf_accuracy': med_conf_accuracy,
+        'med_conf_accuracy': med_conf['correct_pick'].mean() * 100 if len(med_conf) > 0 else 0,
         'low_conf_games': len(low_conf),
-        'low_conf_accuracy': low_conf_accuracy,
+        'low_conf_accuracy': low_conf['correct_pick'].mean() * 100 if len(low_conf) > 0 else 0,
         'df': df,
     }
 
 
 # Date range selector
-st.markdown("### Select Time Period")
-
 col1, col2, col3 = st.columns([1, 1, 2])
 
 with col1:
-    # Quick presets
     preset = st.selectbox(
         "Quick Select",
         ["Last 7 days", "Last 14 days", "Last 30 days", "Last 60 days", "This Season", "Custom"]
@@ -137,7 +126,7 @@ with col2:
         start_date = end_date - timedelta(days=60)
     elif preset == "This Season":
         end_date = now_ct().date()
-        start_date = datetime(2025, 10, 1).date()  # Season start
+        start_date = datetime(2025, 10, 1).date()
     else:
         start_date = st.date_input("Start Date", value=now_ct().date() - timedelta(days=30))
         end_date = st.date_input("End Date", value=now_ct().date())
@@ -158,70 +147,119 @@ if games_df.empty:
     st.info("Predictions are stored when you run `daily_update.py` before games start.")
     st.stop()
 
-# Calculate metrics
 metrics = calculate_accuracy_metrics(games_df)
 df = metrics['df']
 
-# Summary metrics
-st.markdown("### Overall Accuracy")
+# Summary metrics as hero cards
+st.markdown('<div class="section-header">Overall Accuracy</div>', unsafe_allow_html=True)
 
-col1, col2, col3, col4, col5 = st.columns(5)
+accuracy_color = GREEN if metrics['pick_accuracy'] >= 60 else YELLOW if metrics['pick_accuracy'] >= 55 else RED
 
-with col1:
-    st.metric("Games Analyzed", metrics['total_games'])
+cols = st.columns(5)
+with cols[0]:
+    st.markdown(f"""
+    <div class="accuracy-card">
+        <div class="accuracy-big" style="font-size:2rem;">{metrics['total_games']}</div>
+        <div class="accuracy-label">Games Analyzed</div>
+    </div>
+    """, unsafe_allow_html=True)
+with cols[1]:
+    st.markdown(f"""
+    <div class="accuracy-card">
+        <div class="accuracy-big" style="font-size:2rem;">{metrics['correct_picks']}/{metrics['total_games']}</div>
+        <div class="accuracy-label">Correct Picks</div>
+    </div>
+    """, unsafe_allow_html=True)
+with cols[2]:
+    st.markdown(f"""
+    <div class="accuracy-card">
+        <div class="accuracy-big" style="font-size:2rem; color:{accuracy_color};">{metrics['pick_accuracy']:.1f}%</div>
+        <div class="accuracy-label">Pick Accuracy</div>
+        <div class="accuracy-detail">{metrics['pick_accuracy'] - 50:+.1f}% vs coin flip</div>
+    </div>
+    """, unsafe_allow_html=True)
+with cols[3]:
+    st.markdown(f"""
+    <div class="accuracy-card">
+        <div class="accuracy-big" style="font-size:2rem;">{metrics['avg_spread_error']:.1f}</div>
+        <div class="accuracy-label">Avg Spread Error</div>
+        <div class="accuracy-detail">points</div>
+    </div>
+    """, unsafe_allow_html=True)
+with cols[4]:
+    st.markdown(f"""
+    <div class="accuracy-card">
+        <div class="accuracy-big" style="font-size:2rem;">{metrics['median_spread_error']:.1f}</div>
+        <div class="accuracy-label">Median Spread Error</div>
+        <div class="accuracy-detail">points</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-with col2:
-    st.metric("Correct Picks", f"{metrics['correct_picks']}/{metrics['total_games']}")
-
-with col3:
-    accuracy_delta = metrics['pick_accuracy'] - 50  # vs coin flip
-    st.metric("Pick Accuracy", f"{metrics['pick_accuracy']:.1f}%", delta=f"{accuracy_delta:+.1f}% vs 50%")
-
-with col4:
-    st.metric("Avg Spread Error", f"{metrics['avg_spread_error']:.1f} pts")
-
-with col5:
-    st.metric("Median Spread Error", f"{metrics['median_spread_error']:.1f} pts")
-
+st.markdown("")
 st.markdown("---")
 
 # Accuracy by confidence level
-st.markdown("### Accuracy by Confidence Level")
+st.markdown('<div class="section-header">Accuracy by Confidence Level</div>', unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
 with col1:
+    conf_rows = [
+        ("High (65%+)", metrics['high_conf_games'], metrics['high_conf_accuracy'], "High"),
+        ("Medium (55-65%)", metrics['med_conf_games'], metrics['med_conf_accuracy'], "Medium"),
+        ("Low (<55%)", metrics['low_conf_games'], metrics['low_conf_accuracy'], "Low"),
+    ]
+    for label, games, acc, level in conf_rows:
+        st.markdown(f"""
+        <div class="game-card" style="padding: 0.8rem 1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <span style="font-weight:600; color:#FAFAFA;">{label}</span>
+                    <span style="color:#888; font-size:0.85rem; margin-left:0.5rem;">{games} games</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:0.8rem;">
+                    <span style="font-size:1.2rem; font-weight:700; color:#FAFAFA;">{acc:.1f}%</span>
+                    {confidence_badge(level)}
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    st.caption("High confidence picks should have higher accuracy if the model is well-calibrated.")
+
+with col2:
     conf_data = pd.DataFrame({
         'Confidence': ['High (65%+)', 'Medium (55-65%)', 'Low (<55%)'],
         'Games': [metrics['high_conf_games'], metrics['med_conf_games'], metrics['low_conf_games']],
         'Accuracy': [metrics['high_conf_accuracy'], metrics['med_conf_accuracy'], metrics['low_conf_accuracy']]
     })
 
-    st.dataframe(
-        conf_data.style.format({'Accuracy': '{:.1f}%'}),
-        use_container_width=True,
-        hide_index=True
-    )
-
-    st.caption("High confidence picks should have higher accuracy if the model is well-calibrated.")
-
-with col2:
     fig = px.bar(
         conf_data,
         x='Confidence',
         y='Accuracy',
-        color='Accuracy',
-        color_continuous_scale=['red', 'yellow', 'green'],
+        color='Confidence',
+        color_discrete_map={
+            'High (65%+)': GREEN,
+            'Medium (55-65%)': YELLOW,
+            'Low (<55%)': '#9E9E9E',
+        },
         title='Accuracy by Confidence Level'
     )
     fig.add_hline(y=50, line_dash="dash", line_color="gray", annotation_text="50% (coin flip)")
-    fig.update_layout(template="plotly_white", height=300, showlegend=False)
+    fig.update_layout(
+        template=PLOTLY_TEMPLATE,
+        height=300,
+        showlegend=False,
+        paper_bgcolor=CHART_BG,
+        plot_bgcolor=CHART_BG,
+        yaxis=dict(gridcolor=GRID_COLOR),
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 
 # Accuracy over time
-st.markdown("### Accuracy Over Time")
+st.markdown('<div class="section-header">Accuracy Over Time</div>', unsafe_allow_html=True)
 
 df['game_date'] = pd.to_datetime(df['game_date'])
 df['week'] = df['game_date'].dt.to_period('W').astype(str)
@@ -240,21 +278,24 @@ fig.add_trace(go.Scatter(
     y=weekly['Accuracy'],
     mode='lines+markers',
     name='Weekly Accuracy',
-    line=dict(color='#1f77b4', width=2),
+    line=dict(color=GREEN, width=2),
     marker=dict(size=8),
 ))
 
 fig.add_hline(y=50, line_dash="dash", line_color="gray", opacity=0.5)
-fig.add_hline(y=metrics['pick_accuracy'], line_dash="dot", line_color="green",
+fig.add_hline(y=metrics['pick_accuracy'], line_dash="dot", line_color=GREEN,
               annotation_text=f"Avg: {metrics['pick_accuracy']:.1f}%")
 
 fig.update_layout(
     title="Weekly Pick Accuracy",
     xaxis_title="Week",
     yaxis_title="Accuracy %",
-    template="plotly_white",
+    template=PLOTLY_TEMPLATE,
     height=400,
-    yaxis=dict(range=[0, 100])
+    yaxis=dict(range=[0, 100], gridcolor=GRID_COLOR),
+    xaxis=dict(gridcolor=GRID_COLOR),
+    paper_bgcolor=CHART_BG,
+    plot_bgcolor=CHART_BG,
 )
 
 st.plotly_chart(fig, use_container_width=True)
@@ -262,19 +303,17 @@ st.plotly_chart(fig, use_container_width=True)
 st.markdown("---")
 
 # Accuracy by team
-st.markdown("### Accuracy by Team")
+st.markdown('<div class="section-header">Accuracy by Team</div>', unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
 with col1:
     st.markdown("**When Picking Team to Win**")
 
-    # Games where we picked home team
     home_picks = df[df['predicted_home_win'] == True].copy()
     home_picks['team_picked'] = home_picks['home_team']
     home_picks['picked_correctly'] = home_picks['correct_pick']
 
-    # Games where we picked away team
     away_picks = df[df['predicted_home_win'] == False].copy()
     away_picks['team_picked'] = away_picks['away_team']
     away_picks['picked_correctly'] = away_picks['correct_pick']
@@ -288,7 +327,6 @@ with col1:
     team_accuracy['Accuracy'] = (team_accuracy['Correct'] / team_accuracy['Total'] * 100).round(1)
     team_accuracy = team_accuracy.sort_values('Accuracy', ascending=False)
 
-    # Only filter if we have enough games, otherwise show all
     min_games = 3 if len(team_accuracy) > 10 else 1
     filtered = team_accuracy[team_accuracy['Total'] >= min_games].head(10)
     if filtered.empty:
@@ -299,12 +337,10 @@ with col1:
 with col2:
     st.markdown("**When Picking Team to Lose**")
 
-    # Games where we picked against home team
     against_home = df[df['predicted_home_win'] == False].copy()
     against_home['team_faded'] = against_home['home_team']
     against_home['fade_correct'] = against_home['correct_pick']
 
-    # Games where we picked against away team
     against_away = df[df['predicted_home_win'] == True].copy()
     against_away['team_faded'] = against_away['away_team']
     against_away['fade_correct'] = against_away['correct_pick']
@@ -318,7 +354,6 @@ with col2:
     fade_accuracy['Accuracy'] = (fade_accuracy['Correct'] / fade_accuracy['Total'] * 100).round(1)
     fade_accuracy = fade_accuracy.sort_values('Accuracy', ascending=False)
 
-    # Only filter if we have enough games, otherwise show all
     min_games = 3 if len(fade_accuracy) > 10 else 1
     filtered = fade_accuracy[fade_accuracy['Total'] >= min_games].head(10)
     if filtered.empty:
@@ -329,27 +364,35 @@ with col2:
 st.markdown("---")
 
 # Spread error distribution
-st.markdown("### Spread Prediction Error Distribution")
+st.markdown('<div class="section-header">Spread Prediction Error Distribution</div>', unsafe_allow_html=True)
 
 fig = px.histogram(
     df,
     x='spread_error',
     nbins=20,
     title='Distribution of Spread Prediction Errors',
-    labels={'spread_error': 'Spread Error (points)', 'count': 'Number of Games'}
+    labels={'spread_error': 'Spread Error (points)', 'count': 'Number of Games'},
+    color_discrete_sequence=[GREEN],
 )
-fig.add_vline(x=metrics['avg_spread_error'], line_dash="dash", line_color="red",
+fig.add_vline(x=metrics['avg_spread_error'], line_dash="dash", line_color=RED,
               annotation_text=f"Avg: {metrics['avg_spread_error']:.1f}")
-fig.add_vline(x=metrics['median_spread_error'], line_dash="dash", line_color="green",
+fig.add_vline(x=metrics['median_spread_error'], line_dash="dash", line_color=GREEN,
               annotation_text=f"Median: {metrics['median_spread_error']:.1f}")
-fig.update_layout(template="plotly_white", height=400)
+fig.update_layout(
+    template=PLOTLY_TEMPLATE,
+    height=400,
+    paper_bgcolor=CHART_BG,
+    plot_bgcolor=CHART_BG,
+    yaxis=dict(gridcolor=GRID_COLOR),
+    xaxis=dict(gridcolor=GRID_COLOR),
+)
 
 st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 
 # Home vs Away accuracy
-st.markdown("### Home vs Away Picks")
+st.markdown('<div class="section-header">Home vs Away Picks</div>', unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
@@ -371,22 +414,23 @@ with col2:
         home_away_data,
         values='Games',
         names='Pick Type',
-        title='Pick Distribution'
+        title='Pick Distribution',
+        color_discrete_sequence=[GREEN, '#1f77b4'],
     )
-    fig.update_layout(template="plotly_white", height=300)
+    fig.update_layout(
+        template=PLOTLY_TEMPLATE,
+        height=300,
+        paper_bgcolor=CHART_BG,
+    )
     st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 
 # Recent predictions
-st.markdown("### Recent Predictions vs Results")
+st.markdown('<div class="section-header">Recent Predictions vs Results</div>', unsafe_allow_html=True)
 
 recent = df.sort_values('game_date', ascending=False).head(15).copy()
 recent['matchup'] = recent['away_team'] + ' @ ' + recent['home_team']
-recent['result'] = recent.apply(
-    lambda x: f"{x['away_team']} {int(x['away_score'])} - {int(x['home_score'])} {x['home_team']}",
-    axis=1
-)
 recent['predicted_winner'] = recent.apply(
     lambda x: x['home_team'] if x['predicted_home_win'] else x['away_team'],
     axis=1

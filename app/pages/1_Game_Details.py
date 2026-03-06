@@ -16,13 +16,13 @@ from src.utils.update_status import get_last_run_info
 from src.utils.live_scores import refresh_live_scores
 from src.data.odds_fetcher import get_current_odds
 from src.models.predictor import predict_game, predictions_to_dataframe, clear_injuries_cache
-from app.shared import render_sidebar
+from app.shared import render_sidebar, confidence_badge
 
 st.set_page_config(page_title="Game Details | Slick Bets", page_icon="🏀", layout="wide")
 render_sidebar()
 
-st.title("🏀 Game Details")
-st.markdown("Detailed Elo breakdowns, injury impacts, rest factors, and sportsbook odds.")
+st.markdown('<div class="hero-title" style="font-size:2rem;">Game Details</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-subtitle" style="font-size:0.95rem;">Detailed Elo breakdowns, injury impacts, rest factors, and sportsbook odds.</div>', unsafe_allow_html=True)
 
 # Daily update status indicator
 last_run = get_last_run_info()
@@ -125,7 +125,10 @@ if games_df.empty:
     st.stop()
 
 # Display game count
-st.markdown(f"### {len(predictions)} Games Found")
+st.markdown(
+    f'<div class="section-header">{len(predictions)} Games Found</div>',
+    unsafe_allow_html=True,
+)
 
 # Injury impact summary
 if apply_injuries and predictions:
@@ -173,7 +176,7 @@ if ODDS_API_KEY and ODDS_API_KEY != "your_key_here":
             st.warning(f"Could not fetch odds: {e}")
 
 # All games predictions table
-st.markdown("### All Game Predictions")
+st.markdown('<div class="section-header">All Game Predictions</div>', unsafe_allow_html=True)
 
 pred_df = predictions_to_dataframe(predictions)
 if not pred_df.empty:
@@ -230,7 +233,7 @@ if not pred_df.empty:
     )
 
 # Game details expanders
-st.markdown("### Game Details")
+st.markdown('<div class="section-header">Game Details</div>', unsafe_allow_html=True)
 
 for pred in predictions:
     # Add injury indicator to expander title
