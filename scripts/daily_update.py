@@ -147,34 +147,65 @@ def update_game_results():
             logger.info("No games found for %s", date_str)
             continue
 
-        # Match ESPN games to existing DB games by team abbreviation
+        # Build team lookup
+        teams_df = get_all_teams()
+        team_map = {row['abbreviation']: int(row['team_id']) for _, row in teams_df.iterrows()}
+
         existing_games = get_games_by_date(date_str)
-        if existing_games.empty:
-            logger.info("No existing DB games for %s to match ESPN data against", date_str)
-            continue
 
         updated = 0
+        inserted = 0
         for espn_game in espn_games:
             if espn_game['status'] != 'final' or not espn_game['home_score'] or not espn_game['away_score']:
                 continue
 
-            match = existing_games[
-                (existing_games['home_abbr'] == espn_game['home_abbr']) &
-                (existing_games['away_abbr'] == espn_game['away_abbr'])
-            ]
-            if not match.empty:
-                game_id = match.iloc[0]['game_id']
-                update_game_result(
-                    game_id=game_id,
-                    home_score=espn_game['home_score'],
-                    away_score=espn_game['away_score']
-                )
-                updated += 1
-                logger.info("Updated (ESPN): %s %s-%s (%s-%s)",
-                            game_id, espn_game['away_abbr'], espn_game['home_abbr'],
-                            espn_game['away_score'], espn_game['home_score'])
+            home_abbr = espn_game['home_abbr']
+            away_abbr = espn_game['away_abbr']
 
-        logger.info("Updated %d games from ESPN for %s", updated, date_str)
+            # Try to match existing DB game
+            if not existing_games.empty:
+                match = existing_games[
+                    (existing_games['home_abbr'] == home_abbr) &
+                    (existing_games['away_abbr'] == away_abbr)
+                ]
+                if not match.empty:
+                    game_id = match.iloc[0]['game_id']
+                    update_game_result(
+                        game_id=game_id,
+                        home_score=espn_game['home_score'],
+                        away_score=espn_game['away_score']
+                    )
+                    updated += 1
+                    logger.info("Updated (ESPN): %s %s-%s (%s-%s)",
+                                game_id, away_abbr, home_abbr,
+                                espn_game['away_score'], espn_game['home_score'])
+                    continue
+
+            # Insert new game with final score
+            home_id = team_map.get(home_abbr)
+            away_id = team_map.get(away_abbr)
+            if not home_id or not away_id:
+                logger.warning("Unknown team abbreviation: %s or %s", home_abbr, away_abbr)
+                continue
+
+            date_compact = date_str.replace("-", "")
+            game_id = f"ESPN_{date_compact}_{away_abbr}_{home_abbr}"
+            upsert_game(
+                game_id=game_id,
+                season=CURRENT_SEASON,
+                game_date=date_str,
+                home_team_id=home_id,
+                away_team_id=away_id,
+                home_score=espn_game['home_score'],
+                away_score=espn_game['away_score'],
+                status='final',
+            )
+            inserted += 1
+            logger.info("Inserted (ESPN): %s %s-%s (%s-%s)",
+                        game_id, away_abbr, home_abbr,
+                        espn_game['away_score'], espn_game['home_score'])
+
+        logger.info("ESPN results for %s: %d updated, %d inserted", date_str, updated, inserted)
 
 
 def update_elo_ratings():
@@ -316,34 +347,66 @@ def fetch_todays_games():
         logger.info("No games scheduled today")
         return
 
-    # Update existing DB games with ESPN data (status, scores, times)
+    # Build team abbreviation -> team_id lookup
+    teams_df = get_all_teams()
+    team_map = {row['abbreviation']: int(row['team_id']) for _, row in teams_df.iterrows()}
+
+    # Try to match against existing DB games first
     existing_games = get_games_by_date(today)
-    if existing_games.empty:
-        logger.info("No existing DB games for today to update from ESPN")
-        return
 
     updated = 0
+    inserted = 0
     for espn_game in espn_games:
-        match = existing_games[
-            (existing_games['home_abbr'] == espn_game['home_abbr']) &
-            (existing_games['away_abbr'] == espn_game['away_abbr'])
-        ]
-        if not match.empty:
-            game_row = match.iloc[0]
-            upsert_game(
-                game_id=game_row['game_id'],
-                season=game_row['season'],
-                game_date=today,
-                game_time=espn_game.get('game_time'),
-                home_team_id=int(game_row['home_team_id']),
-                away_team_id=int(game_row['away_team_id']),
-                home_score=espn_game['home_score'],
-                away_score=espn_game['away_score'],
-                status=espn_game['status'],
-            )
-            updated += 1
+        home_abbr = espn_game['home_abbr']
+        away_abbr = espn_game['away_abbr']
 
-    logger.info("Updated %d games from ESPN for today", updated)
+        # Check if game already exists in DB
+        if not existing_games.empty:
+            match = existing_games[
+                (existing_games['home_abbr'] == home_abbr) &
+                (existing_games['away_abbr'] == away_abbr)
+            ]
+            if not match.empty:
+                game_row = match.iloc[0]
+                upsert_game(
+                    game_id=game_row['game_id'],
+                    season=game_row['season'],
+                    game_date=today,
+                    game_time=espn_game.get('game_time'),
+                    home_team_id=int(game_row['home_team_id']),
+                    away_team_id=int(game_row['away_team_id']),
+                    home_score=espn_game['home_score'],
+                    away_score=espn_game['away_score'],
+                    status=espn_game['status'],
+                )
+                updated += 1
+                continue
+
+        # Insert new game from ESPN
+        home_id = team_map.get(home_abbr)
+        away_id = team_map.get(away_abbr)
+        if not home_id or not away_id:
+            logger.warning("Unknown team abbreviation: %s or %s", home_abbr, away_abbr)
+            continue
+
+        # Generate synthetic game_id: ESPN_YYYYMMDD_AWAY_HOME
+        date_compact = today.replace("-", "")
+        game_id = f"ESPN_{date_compact}_{away_abbr}_{home_abbr}"
+
+        upsert_game(
+            game_id=game_id,
+            season=CURRENT_SEASON,
+            game_date=today,
+            game_time=espn_game.get('game_time'),
+            home_team_id=home_id,
+            away_team_id=away_id,
+            home_score=espn_game['home_score'],
+            away_score=espn_game['away_score'],
+            status=espn_game['status'],
+        )
+        inserted += 1
+
+    logger.info("ESPN today: %d updated, %d inserted", updated, inserted)
 
 
 def fetch_injuries():
