@@ -146,7 +146,7 @@ def _match_or_create_game_id(bdl_game_id: int, game_date: str,
 
 # ── Phase 2: Games & Scores ──────────────────────────────────────────────────
 
-def _parse_bdl_game(game: dict) -> Optional[dict]:
+def _parse_bdl_game(game: dict, queried_date: str = None) -> Optional[dict]:
     """Parse a single BDL game dict into our DB format."""
     home_team = game.get("home_team", {})
     away_team = game.get("visitor_team", {})
@@ -164,8 +164,8 @@ def _parse_bdl_game(game: dict) -> Optional[dict]:
         logger.warning("Unknown BDL team ID: %s or %s", home_bdl_id, away_bdl_id)
         return None
 
-    # BDL "date" is the correct game date; "datetime" is UTC (may shift a day)
-    game_date = game.get("date", "")[:10]
+    # BDL "date" can be UTC-shifted; prefer the queried date when available
+    game_date = queried_date or game.get("date", "")[:10]
     bdl_datetime = game.get("datetime") or ""
 
     # Extract game time — BDL returns UTC, convert to ET for display
@@ -231,7 +231,7 @@ def fetch_games_bdl(date_str: str) -> list[dict]:
     games = result.get("data", [])
     parsed = []
     for g in games:
-        p = _parse_bdl_game(g)
+        p = _parse_bdl_game(g, queried_date=date_str)
         if p:
             parsed.append(p)
 

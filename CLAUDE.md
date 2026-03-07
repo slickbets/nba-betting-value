@@ -157,7 +157,7 @@ st.markdown(
 
 - BDL player impact is slow (~3 min per refresh) — runs every 3 days via staleness check
 - `odds_fetcher.py:284` — Add spread/total support in `get_best_odds()`
-- `daily_update.py` silently degrades when API keys are missing — needs fail-fast (SLB-17)
+- `daily_update.py` silently degrades when API keys are missing — needs fail-fast + startup validation (SLB-17)
 
 ## Future Ideas
 
