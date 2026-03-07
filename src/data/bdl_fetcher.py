@@ -384,7 +384,7 @@ def _parse_minutes(min_val) -> float:
 
 def fetch_player_impact_bdl(season_str: str,
                              min_mpg: float = 15.0,
-                             min_gp: int = 10) -> pd.DataFrame:
+                             min_gp: int = 20) -> pd.DataFrame:
     """
     Fetch player advanced stats from BDL for injury impact calculations.
 
@@ -464,6 +464,10 @@ def fetch_player_impact_bdl(season_str: str,
                 elo_impact = net_rating * (mpg / 48) * (usg_pct / 0.20) * 1.5
             else:
                 elo_impact = net_rating * (mpg / 48) * 1.5
+
+            # Scale by games-played confidence — reduces noise from small samples
+            gp_confidence = min(gp / 50, 1.0)
+            elo_impact *= gp_confidence
 
             all_records.append({
                 "player_id": pid,
