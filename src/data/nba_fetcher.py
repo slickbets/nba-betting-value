@@ -1,4 +1,9 @@
-"""NBA data fetcher using nba_api package."""
+"""NBA data fetcher using nba_api package.
+
+DEPRECATED: BallDontLie API (bdl_fetcher.py) is now the primary data source.
+This module is kept as a local/fallback option. ESPN scoreboard functions are
+still used as fallback by daily_update.py and live_scores.py.
+"""
 
 import logging
 import time

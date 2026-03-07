@@ -24,6 +24,8 @@ DB_PATH = Path(os.getenv("DB_PATH", str(DATA_DIR / "nba_betting.db")))
 
 # API Keys
 ODDS_API_KEY = os.getenv("ODDS_API_KEY", "")
+BDL_API_KEY = os.getenv("BALLDONTLIE_API_KEY", "")
+BDL_BASE_URL = "https://api.balldontlie.io"
 
 # Elo Parameters
 ELO_K_FACTOR = 14.0

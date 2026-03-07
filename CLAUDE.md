@@ -13,7 +13,7 @@ app/                    → Streamlit UI (main.py + pages/)
   pages/2_Model_Accuracy.py → Model prediction tracking
   pages/3_Team_Ratings.py → Team Elo rankings
   pages/4_Donate.py       → Donation page (Cash App + Venmo)
-src/data/               → Data fetching (NBA API, ESPN, odds, injuries)
+src/data/               → Data fetching (BDL primary, ESPN/NBA API fallback)
 src/models/             → Predictions (Elo ratings, player impact, rest factors, params)
 src/backtesting/        → Backtest engine, parameter sweep
 src/betting/            → Value detection, odds conversion
@@ -33,10 +33,11 @@ config.py               → All configuration constants + now_ct() timezone help
 | `src/models/player_impact.py` | Player impact for injury adjustments (DB-only, USG%-weighted) |
 | `src/models/rest_factor.py` | Back-to-back and rest day Elo adjustments |
 | `src/models/params.py` | EloParams frozen dataclass (all tunable parameters) |
+| `src/data/bdl_fetcher.py` | BallDontLie API client — games, stats, odds, injuries, standings |
 | `src/data/database.py` | SQLite operations (teams, games, player_impact tables) |
-| `src/data/injury_fetcher.py` | Fetches injuries from ESPN API |
-| `src/data/nba_fetcher.py` | Games/scores/player stats from NBA API (+ ESPN fallback) |
-| `src/data/odds_fetcher.py` | Fetches live odds from The Odds API |
+| `src/data/injury_fetcher.py` | Injuries (BDL primary, ESPN fallback) |
+| `src/data/nba_fetcher.py` | DEPRECATED: NBA API + ESPN fallback (kept for local use) |
+| `src/data/odds_fetcher.py` | Odds (BDL primary, The Odds API fallback) |
 | `src/utils/live_scores.py` | Auto-refresh live scores from ESPN (cached 60s) |
 | `src/utils/feedback.py` | Submit feedback to Linear via GraphQL API |
 | `scripts/daily_update.py` | Daily refresh (results, Elo, predictions, odds, player impact) |
@@ -108,30 +109,29 @@ Injury:     Elo adjustment = -abs(elo_impact) * status_multiplier
 
 | Key | Purpose | Required |
 |-----|---------|----------|
-| `ODDS_API_KEY` | The Odds API for live betting odds | Optional |
+| `BALLDONTLIE_API_KEY` | BallDontLie GOAT tier — primary data source | Required |
+| `ODDS_API_KEY` | The Odds API (fallback for odds) | Optional |
 | `LINEAR_API_KEY` | Linear feedback integration | Optional |
 
 ## Data Sources
 
-| Data | Source | Frequency |
-|------|--------|-----------|
-| Games & Scores | NBA API (`nba_api`), ESPN fallback, NBA CDN fallback | daily_update.py |
-| Injuries | ESPN public API | daily_update.py |
-| Live Status | ESPN scoreboard API (fallback for cloud) | Page load |
-| Odds | The Odds API | Page load (costs credits) |
-| Player Impact | NBA API (`leaguedashplayerstats`) + manual entries | daily_update.py |
-| W/L Records | ESPN standings API | Team Ratings page (cached 1hr) |
+| Data | Primary Source | Fallback | Frequency |
+|------|---------------|----------|-----------|
+| Games & Scores | BallDontLie API | ESPN scoreboard | daily_update.py |
+| Injuries | BallDontLie API | ESPN injuries API | daily_update.py |
+| Live Status | BallDontLie live box scores | ESPN scoreboard | Page load |
+| Odds | BallDontLie v2/odds | The Odds API | Page load |
+| Player Impact | BallDontLie stats/advanced | — | daily_update.py (every 3 days) |
+| W/L Records | BallDontLie standings | ESPN standings | Team Ratings page (cached 1hr) |
 
 ## Known Limitations
 
-- **NBA API cloud blocking**: `stats.nba.com` blocks datacenter IPs. ESPN fallback handles scores/schedule but not player advanced stats (NET_RATING, USG%). `NBA_API_HEADERS` in `nba_fetcher.py` may need updating if Akamai tightens WAF.
-- **Player API gaps**: `leaguedashplayerstats` silently drops some stars (Doncic manually added). Use `playercareerstats` with known player IDs as workaround.
+- **Player impact fetch is slow**: BDL requires per-team pagination for advanced stats (~3 min). Runs every 3 days via staleness check.
 - **Home spread bias**: +2.76 pts over-prediction. Sweep confirms HCA=35 is still optimal.
 - **O/D Elo drift**: Offense avg ~1471, Defense avg ~1529. Structural; total conserved at 3000.
 - **O/D total correlation**: r=0.233 game-level (single-game variance too high).
-- **Odds API**: 500 free requests/month.
 - **Season change**: Run `scripts/rebuild_elo.py --all` after changing seasons.
-- **Deprecated**: `backfill_history.py` — use `rebuild_elo.py` instead (has MOV + K-decay).
+- **Deprecated**: `nba_fetcher.py` — kept as local/fallback. `backfill_history.py` — use `rebuild_elo.py` instead.
 
 ## Streamlit HTML Warning
 
@@ -155,9 +155,8 @@ st.markdown(
 
 ## Technical Debt
 
-- `odds_fetcher.py:192` — Better odds-to-game matching
-- `odds_fetcher.py:284` — Add spread/total support
-- Replace `stats.nba.com` with cloud-friendly API (BallDontLie GOAT $40/mo is best option)
+- BDL player impact is slow (~3 min per refresh) — runs every 3 days via staleness check
+- `odds_fetcher.py:284` — Add spread/total support in `get_best_odds()`
 
 ## Future Ideas
 

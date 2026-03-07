@@ -94,14 +94,13 @@ from src.data.database import (
     clear_old_player_impacts,
     get_league_avg_score,
 )
+from src.data.bdl_fetcher import (
+    fetch_games_bdl,
+    fetch_player_impact_bdl,
+    fetch_team_ratings_bdl,
+)
 from src.data.nba_fetcher import (
-    fetch_season_games,
-    fetch_games_by_date,
     fetch_scoreboard_espn,
-    process_games_for_db,
-    process_scoreboard_for_db,
-    fetch_player_impact_stats,
-    fetch_missing_player_impacts,
     fetch_team_offensive_defensive_ratings,
 )
 from src.data.odds_fetcher import get_current_odds
@@ -113,10 +112,9 @@ from config import CURRENT_SEASON, USE_OD_ELO, LEAGUE_AVG_SCORE
 
 
 def update_game_results():
-    """Fetch and update recent game results."""
+    """Fetch and update recent game results (BDL primary, ESPN fallback)."""
     logger.info("1. Updating game results...")
 
-    # Check games from the last 3 days
     today = now_ct()
 
     for days_ago in range(3):
@@ -125,32 +123,34 @@ def update_game_results():
 
         logger.info("Checking %s...", date_str)
 
-        # Fetch from NBA API
-        games = fetch_games_by_date(date_str)
+        # Primary: BallDontLie API
+        bdl_games = fetch_games_bdl(date_str)
 
-        if not games.empty:
-            processed = process_scoreboard_for_db(games, CURRENT_SEASON)
-            for game in processed:
+        if bdl_games:
+            updated = 0
+            for game in bdl_games:
                 if game['status'] == 'final' and game['home_score'] and game['away_score']:
+                    # upsert handles both insert and update
+                    upsert_game(**game)
                     update_game_result(
                         game_id=game['game_id'],
                         home_score=game['home_score'],
                         away_score=game['away_score']
                     )
-                    logger.info("Updated: %s (%s-%s)", game['game_id'], game['home_score'], game['away_score'])
+                    updated += 1
+                    logger.info("Updated (BDL): %s (%s-%s)", game['game_id'], game['home_score'], game['away_score'])
+            logger.info("BDL results for %s: %d updated", date_str, updated)
             continue
 
-        # ESPN fallback when NBA API returns empty
-        logger.info("NBA API returned no data for %s, trying ESPN fallback...", date_str)
+        # ESPN fallback when BDL returns empty
+        logger.info("BDL returned no data for %s, trying ESPN fallback...", date_str)
         espn_games = fetch_scoreboard_espn(date_str)
         if not espn_games:
             logger.info("No games found for %s", date_str)
             continue
 
-        # Build team lookup
         teams_df = get_all_teams()
         team_map = {row['abbreviation']: int(row['team_id']) for _, row in teams_df.iterrows()}
-
         existing_games = get_games_by_date(date_str)
 
         updated = 0
@@ -162,7 +162,6 @@ def update_game_results():
             home_abbr = espn_game['home_abbr']
             away_abbr = espn_game['away_abbr']
 
-            # Try to match existing DB game
             if not existing_games.empty:
                 match = existing_games[
                     (existing_games['home_abbr'] == home_abbr) &
@@ -176,12 +175,8 @@ def update_game_results():
                         away_score=espn_game['away_score']
                     )
                     updated += 1
-                    logger.info("Updated (ESPN): %s %s-%s (%s-%s)",
-                                game_id, away_abbr, home_abbr,
-                                espn_game['away_score'], espn_game['home_score'])
                     continue
 
-            # Insert new game with final score
             home_id = team_map.get(home_abbr)
             away_id = team_map.get(away_abbr)
             if not home_id or not away_id:
@@ -191,19 +186,12 @@ def update_game_results():
             date_compact = date_str.replace("-", "")
             game_id = f"ESPN_{date_compact}_{away_abbr}_{home_abbr}"
             upsert_game(
-                game_id=game_id,
-                season=CURRENT_SEASON,
-                game_date=date_str,
-                home_team_id=home_id,
-                away_team_id=away_id,
-                home_score=espn_game['home_score'],
-                away_score=espn_game['away_score'],
+                game_id=game_id, season=CURRENT_SEASON, game_date=date_str,
+                home_team_id=home_id, away_team_id=away_id,
+                home_score=espn_game['home_score'], away_score=espn_game['away_score'],
                 status='final',
             )
             inserted += 1
-            logger.info("Inserted (ESPN): %s %s-%s (%s-%s)",
-                        game_id, away_abbr, home_abbr,
-                        espn_game['away_score'], espn_game['home_score'])
 
         logger.info("ESPN results for %s: %d updated, %d inserted", date_str, updated, inserted)
 
@@ -327,31 +315,29 @@ def update_elo_ratings():
 
 
 def fetch_todays_games():
-    """Fetch today's scheduled games."""
+    """Fetch today's scheduled games (BDL primary, ESPN fallback)."""
     logger.info("3. Fetching today's games...")
 
     today = now_ct().strftime("%Y-%m-%d")
-    games = fetch_games_by_date(today)
 
-    if not games.empty:
-        processed = process_scoreboard_for_db(games, CURRENT_SEASON)
-        for game in processed:
+    # Primary: BallDontLie API
+    bdl_games = fetch_games_bdl(today)
+
+    if bdl_games:
+        for game in bdl_games:
             upsert_game(**game)
-        logger.info("Loaded %d games for today", len(processed))
+        logger.info("BDL: loaded %d games for today", len(bdl_games))
         return
 
-    # ESPN fallback when NBA API returns empty
-    logger.info("NBA API returned no data for today, trying ESPN fallback...")
+    # ESPN fallback
+    logger.info("BDL returned no data for today, trying ESPN fallback...")
     espn_games = fetch_scoreboard_espn(today)
     if not espn_games:
         logger.info("No games scheduled today")
         return
 
-    # Build team abbreviation -> team_id lookup
     teams_df = get_all_teams()
     team_map = {row['abbreviation']: int(row['team_id']) for _, row in teams_df.iterrows()}
-
-    # Try to match against existing DB games first
     existing_games = get_games_by_date(today)
 
     updated = 0
@@ -360,7 +346,6 @@ def fetch_todays_games():
         home_abbr = espn_game['home_abbr']
         away_abbr = espn_game['away_abbr']
 
-        # Check if game already exists in DB
         if not existing_games.empty:
             match = existing_games[
                 (existing_games['home_abbr'] == home_abbr) &
@@ -369,40 +354,28 @@ def fetch_todays_games():
             if not match.empty:
                 game_row = match.iloc[0]
                 upsert_game(
-                    game_id=game_row['game_id'],
-                    season=game_row['season'],
-                    game_date=today,
-                    game_time=espn_game.get('game_time'),
+                    game_id=game_row['game_id'], season=game_row['season'],
+                    game_date=today, game_time=espn_game.get('game_time'),
                     home_team_id=int(game_row['home_team_id']),
                     away_team_id=int(game_row['away_team_id']),
-                    home_score=espn_game['home_score'],
-                    away_score=espn_game['away_score'],
+                    home_score=espn_game['home_score'], away_score=espn_game['away_score'],
                     status=espn_game['status'],
                 )
                 updated += 1
                 continue
 
-        # Insert new game from ESPN
         home_id = team_map.get(home_abbr)
         away_id = team_map.get(away_abbr)
         if not home_id or not away_id:
-            logger.warning("Unknown team abbreviation: %s or %s", home_abbr, away_abbr)
             continue
 
-        # Generate synthetic game_id: ESPN_YYYYMMDD_AWAY_HOME
         date_compact = today.replace("-", "")
         game_id = f"ESPN_{date_compact}_{away_abbr}_{home_abbr}"
-
         upsert_game(
-            game_id=game_id,
-            season=CURRENT_SEASON,
-            game_date=today,
-            game_time=espn_game.get('game_time'),
-            home_team_id=home_id,
-            away_team_id=away_id,
-            home_score=espn_game['home_score'],
-            away_score=espn_game['away_score'],
-            status=espn_game['status'],
+            game_id=game_id, season=CURRENT_SEASON, game_date=today,
+            game_time=espn_game.get('game_time'), home_team_id=home_id,
+            away_team_id=away_id, home_score=espn_game['home_score'],
+            away_score=espn_game['away_score'], status=espn_game['status'],
         )
         inserted += 1
 
@@ -489,17 +462,22 @@ def fetch_odds():
 
 
 def seed_od_elo_from_api():
-    """Seed initial O/D Elo values from NBA API team ratings."""
-    logger.info("Seeding O/D Elo from NBA API...")
+    """Seed initial O/D Elo values (BDL primary, NBA API fallback)."""
+    logger.info("Seeding O/D Elo...")
 
     try:
-        od_df = fetch_team_offensive_defensive_ratings(CURRENT_SEASON)
+        # Try BDL first
+        od_df = fetch_team_ratings_bdl(CURRENT_SEASON)
+
+        # Fall back to NBA API if BDL doesn't return data
+        if od_df.empty:
+            logger.info("BDL team ratings unavailable, trying NBA API fallback...")
+            od_df = fetch_team_offensive_defensive_ratings(CURRENT_SEASON)
 
         if od_df.empty:
-            logger.warning("Could not fetch team ratings from API")
+            logger.warning("Could not fetch team ratings from any source")
             return False
 
-        # Get existing teams from database
         teams_df = get_all_teams()
         team_map = {row['abbreviation']: row['team_id'] for _, row in teams_df.iterrows()}
 
@@ -520,22 +498,43 @@ def seed_od_elo_from_api():
         return False
 
 
+def _player_impact_is_fresh(max_age_days: int = 3) -> bool:
+    """Check if player impact data was updated recently enough."""
+    from src.data.database import get_connection
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT MAX(updated_at) FROM player_impact WHERE season = ?", (CURRENT_SEASON,))
+        row = cursor.fetchone()
+        if not row or not row[0]:
+            return False
+        try:
+            last_update = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
+            age = (now_ct().replace(tzinfo=None) - last_update).days
+            return age < max_age_days
+        except Exception:
+            return False
+
+
 def update_player_impact():
-    """Update player impact ratings from NBA API."""
+    """Update player impact ratings (BDL primary, cloud-friendly)."""
     logger.info("7. Updating player impact ratings...")
 
+    # Skip if data is fresh — BDL per-team fetch takes ~3 minutes
+    if _player_impact_is_fresh(max_age_days=3):
+        logger.info("Player impact data is less than 3 days old, skipping refresh")
+        return
+
     try:
-        # Clear stale player impact data from previous seasons
         deleted = clear_old_player_impacts(CURRENT_SEASON)
         if deleted > 0:
             logger.info("Cleared %d stale player impact entries from previous seasons", deleted)
 
-        impact_df = fetch_player_impact_stats(CURRENT_SEASON)
+        impact_df = fetch_player_impact_bdl(CURRENT_SEASON)
 
         if impact_df.empty:
-            logger.warning("No player impact data available from bulk endpoint")
+            logger.warning("No player impact data available from BDL")
+            return
 
-        # Save bulk results to database
         for _, row in impact_df.iterrows():
             upsert_player_impact(
                 player_id=int(row['player_id']),
@@ -549,41 +548,10 @@ def update_player_impact():
                 usg_pct=row.get('usg_pct'),
             )
 
-        # Fallback: fetch missing players via per-team TeamPlayerDashboard
-        existing_ids = set(int(row['player_id']) for _, row in impact_df.iterrows()) if not impact_df.empty else set()
-        try:
-            missing_df = fetch_missing_player_impacts(existing_ids, CURRENT_SEASON)
-            if not missing_df.empty:
-                for _, row in missing_df.iterrows():
-                    upsert_player_impact(
-                        player_id=int(row['player_id']),
-                        player_name=row['player_name'],
-                        team_abbr=row['team_abbr'],
-                        net_rating=row['net_rating'],
-                        minutes_per_game=row['minutes_per_game'],
-                        games_played=int(row['games_played']),
-                        elo_impact=row['elo_impact'],
-                        season=CURRENT_SEASON,
-                        usg_pct=row.get('usg_pct'),
-                    )
-                logger.info("Added %d missing players via TeamPlayerDashboard fallback", len(missing_df))
-                total_players = len(impact_df) + len(missing_df)
-            else:
-                total_players = len(impact_df)
-        except Exception as e:
-            logger.warning("TeamPlayerDashboard fallback failed: %s", e)
-            total_players = len(impact_df)
-
-        if total_players == 0:
-            logger.warning("No player impact data available")
-            return
-
-        # Show top players by impact (from bulk endpoint only — fallback players logged separately)
-        if not impact_df.empty:
-            top_players = impact_df.nlargest(5, 'elo_impact')
-            logger.info("Updated %d players. Top 5 by impact:", total_players)
-            for _, p in top_players.iterrows():
-                logger.info("  %s (%s): %+.1f Elo", p['player_name'], p['team_abbr'], p['elo_impact'])
+        top_players = impact_df.nlargest(5, 'elo_impact')
+        logger.info("Updated %d players. Top 5 by impact:", len(impact_df))
+        for _, p in top_players.iterrows():
+            logger.info("  %s (%s): %+.1f Elo", p['player_name'], p['team_abbr'], p['elo_impact'])
 
     except Exception as e:
         logger.error("Error updating player impact: %s", e)

@@ -11,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import requests
 
+from src.data.bdl_fetcher import fetch_standings_bdl
+from config import CURRENT_SEASON
 from src.data.database import (
     init_database,
     get_all_teams,
@@ -43,13 +45,18 @@ if teams_df.empty:
     st.warning("No teams found. Run init_db.py to initialize the database.")
     st.stop()
 
-# Fetch W/L records from ESPN
+# Fetch W/L records (BDL primary, ESPN fallback)
 ESPN_ABBR_MAP = {'GS': 'GSW', 'SA': 'SAS', 'NY': 'NYK', 'NO': 'NOP', 'UTAH': 'UTA', 'WSH': 'WAS'}
 
 
 @st.cache_data(ttl=3600)
-def fetch_espn_records():
-    """Fetch current W/L records from ESPN standings API."""
+def fetch_records():
+    """Fetch current W/L records from BDL, falling back to ESPN."""
+    records = fetch_standings_bdl(CURRENT_SEASON)
+    if records:
+        return records
+
+    # ESPN fallback
     try:
         resp = requests.get(
             'https://site.api.espn.com/apis/v2/sports/basketball/nba/standings',
@@ -71,7 +78,7 @@ def fetch_espn_records():
         return {}
 
 
-espn_records = fetch_espn_records()
+espn_records = fetch_records()
 if espn_records:
     teams_df['wins'] = teams_df['abbreviation'].map(lambda a: espn_records.get(a, (0, 0))[0])
     teams_df['losses'] = teams_df['abbreviation'].map(lambda a: espn_records.get(a, (0, 0))[1])

@@ -1,16 +1,26 @@
-"""Auto-refresh live game scores from ESPN."""
+"""Auto-refresh live game scores (BDL primary, ESPN fallback)."""
 
+import logging
 import streamlit as st
 from config import CURRENT_SEASON
+from src.data.bdl_fetcher import fetch_live_scores_bdl
 from src.data.nba_fetcher import fetch_scoreboard_espn
 from src.data.database import get_games_by_date, get_all_teams, upsert_game
+
+logger = logging.getLogger(__name__)
 
 
 @st.cache_data(ttl=60)
 def refresh_live_scores(date_str: str) -> int:
-    """Fetch latest scores from ESPN and update DB. Returns count of games updated."""
-    espn_games = fetch_scoreboard_espn(date_str)
-    if not espn_games:
+    """Fetch latest scores and update DB. Returns count of games updated."""
+    # Try BDL live scores first
+    live_games = fetch_live_scores_bdl()
+
+    # Fall back to ESPN if BDL returns empty
+    if not live_games:
+        live_games = fetch_scoreboard_espn(date_str)
+
+    if not live_games:
         return 0
 
     existing_games = get_games_by_date(date_str)
@@ -19,9 +29,9 @@ def refresh_live_scores(date_str: str) -> int:
     inserted = 0
     team_map = None  # Lazy-load only if needed
 
-    for espn_game in espn_games:
-        home_abbr = espn_game['home_abbr']
-        away_abbr = espn_game['away_abbr']
+    for game in live_games:
+        home_abbr = game['home_abbr']
+        away_abbr = game['away_abbr']
 
         # Try to match against existing DB game
         if not existing_games.empty:
@@ -37,23 +47,23 @@ def refresh_live_scores(date_str: str) -> int:
                 if db_status == 'final':
                     continue
 
-                # Only update if ESPN has new info
-                if espn_game['status'] != db_status or espn_game['home_score'] != game_row.get('home_score'):
+                # Only update if new info
+                if game['status'] != db_status or game['home_score'] != game_row.get('home_score'):
                     upsert_game(
                         game_id=game_row['game_id'],
                         season=game_row['season'],
                         game_date=date_str,
-                        game_time=espn_game.get('game_time') or game_row.get('game_time'),
+                        game_time=game.get('game_time') or game_row.get('game_time'),
                         home_team_id=int(game_row['home_team_id']),
                         away_team_id=int(game_row['away_team_id']),
-                        home_score=espn_game['home_score'],
-                        away_score=espn_game['away_score'],
-                        status=espn_game['status'],
+                        home_score=game['home_score'],
+                        away_score=game['away_score'],
+                        status=game['status'],
                     )
                     updated += 1
                 continue
 
-        # No existing game found — insert new game from ESPN
+        # No existing game found — insert new game
         if team_map is None:
             teams_df = get_all_teams()
             team_map = {row['abbreviation']: int(row['team_id']) for _, row in teams_df.iterrows()}
@@ -64,17 +74,17 @@ def refresh_live_scores(date_str: str) -> int:
             continue
 
         date_compact = date_str.replace("-", "")
-        game_id = f"ESPN_{date_compact}_{away_abbr}_{home_abbr}"
+        game_id = f"BDL_{date_compact}_{away_abbr}_{home_abbr}"
         upsert_game(
             game_id=game_id,
             season=CURRENT_SEASON,
             game_date=date_str,
-            game_time=espn_game.get('game_time'),
+            game_time=game.get('game_time'),
             home_team_id=home_id,
             away_team_id=away_id,
-            home_score=espn_game['home_score'],
-            away_score=espn_game['away_score'],
-            status=espn_game['status'],
+            home_score=game['home_score'],
+            away_score=game['away_score'],
+            status=game['status'],
         )
         inserted += 1
 

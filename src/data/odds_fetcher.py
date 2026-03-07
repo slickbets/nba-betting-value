@@ -1,4 +1,4 @@
-"""Fetch odds from The Odds API."""
+"""Fetch odds (BDL primary, The Odds API fallback)."""
 
 import logging
 import requests
@@ -12,7 +12,7 @@ import pandas as pd
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from config import ODDS_API_KEY, ODDS_API_BASE_URL, NBA_SPORT_KEY, PREFERRED_BOOKMAKERS
+from config import ODDS_API_KEY, ODDS_API_BASE_URL, NBA_SPORT_KEY, PREFERRED_BOOKMAKERS, now_ct
 from src.data.database import insert_odds, get_team_by_abbreviation
 
 
@@ -227,11 +227,24 @@ def save_odds_to_db(odds_df: pd.DataFrame):
 
 def get_current_odds() -> pd.DataFrame:
     """
-    Fetch and parse current NBA odds.
+    Fetch and parse current NBA odds (BDL primary, The Odds API fallback).
 
     Returns:
         DataFrame with current odds from all configured sportsbooks
     """
+    # Try BDL first (included in GOAT tier, no per-request cost)
+    try:
+        from src.data.bdl_fetcher import fetch_odds_bdl
+        today = now_ct().strftime("%Y-%m-%d")
+        bdl_odds = fetch_odds_bdl(today)
+        if bdl_odds:
+            df = pd.DataFrame(bdl_odds)
+            save_odds_to_db(df)
+            return df
+    except Exception as e:
+        logger.warning("BDL odds failed, falling back to The Odds API: %s", e)
+
+    # Fallback to The Odds API
     data = fetch_nba_odds()
     if data:
         return parse_odds_response(data, save_to_db=True)

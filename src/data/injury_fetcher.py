@@ -175,15 +175,23 @@ def fetch_injuries_from_espn() -> pd.DataFrame:
 
 def fetch_injuries_for_date(game_date: Union[str, datetime] = None) -> pd.DataFrame:
     """
-    Fetch injury report data. ESPN returns current injuries.
+    Fetch injury report data (BDL primary, ESPN fallback).
 
     Args:
-        game_date: Date parameter (ignored - API returns current data only)
+        game_date: Date parameter (ignored - APIs return current data only)
 
     Returns:
         DataFrame with columns: player_name, team, team_abbr, status,
         status_multiplier, reason
     """
+    try:
+        from src.data.bdl_fetcher import fetch_injuries_bdl
+        df = fetch_injuries_bdl()
+        if not df.empty:
+            return df
+    except Exception as e:
+        logger.warning("BDL injuries failed, falling back to ESPN: %s", e)
+
     return fetch_injuries_from_espn()
 
 
