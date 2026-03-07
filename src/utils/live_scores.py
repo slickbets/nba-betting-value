@@ -2,10 +2,9 @@
 
 import logging
 import streamlit as st
-from config import CURRENT_SEASON
 from src.data.bdl_fetcher import fetch_live_scores_bdl
 from src.data.nba_fetcher import fetch_scoreboard_espn
-from src.data.database import get_games_by_date, get_all_teams, upsert_game
+from src.data.database import get_games_by_date, upsert_game
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +25,6 @@ def refresh_live_scores(date_str: str) -> int:
     existing_games = get_games_by_date(date_str)
 
     updated = 0
-    inserted = 0
-    team_map = None  # Lazy-load only if needed
 
     for game in live_games:
         home_abbr = game['home_abbr']
@@ -63,29 +60,8 @@ def refresh_live_scores(date_str: str) -> int:
                     updated += 1
                 continue
 
-        # No existing game found — insert new game
-        if team_map is None:
-            teams_df = get_all_teams()
-            team_map = {row['abbreviation']: int(row['team_id']) for _, row in teams_df.iterrows()}
+        # No existing game found — skip. Game creation is daily_update's job.
+        # The live endpoint returns games without dates, so inserting here
+        # would misattribute games from other dates to the selected date.
 
-        home_id = team_map.get(home_abbr)
-        away_id = team_map.get(away_abbr)
-        if not home_id or not away_id:
-            continue
-
-        date_compact = date_str.replace("-", "")
-        game_id = f"BDL_{date_compact}_{away_abbr}_{home_abbr}"
-        upsert_game(
-            game_id=game_id,
-            season=CURRENT_SEASON,
-            game_date=date_str,
-            game_time=game.get('game_time'),
-            home_team_id=home_id,
-            away_team_id=away_id,
-            home_score=game['home_score'],
-            away_score=game['away_score'],
-            status=game['status'],
-        )
-        inserted += 1
-
-    return updated + inserted
+    return updated
