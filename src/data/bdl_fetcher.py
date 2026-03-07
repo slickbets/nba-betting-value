@@ -327,6 +327,44 @@ def fetch_standings_bdl(season_str: str) -> dict:
     return records
 
 
+def fetch_home_road_splits_bdl(season_str: str) -> dict:
+    """Fetch home/road records from BDL standings.
+
+    Returns:
+        {team_abbr: {"home_wins": int, "home_losses": int,
+                     "road_wins": int, "road_losses": int}}
+    """
+    year = bdl_season(season_str)
+    result = _bdl_get("standings", {"season": year})
+    if not result:
+        return {}
+
+    splits = {}
+    for entry in result.get("data", []):
+        team = entry.get("team", {})
+        bdl_id = team.get("id")
+        abbr = BDL_TO_ABBR.get(bdl_id, "")
+        if not abbr:
+            continue
+
+        # Parse "20-11" format records
+        home_rec = entry.get("home_record", "0-0")
+        road_rec = entry.get("road_record", "0-0")
+        try:
+            hw, hl = (int(x) for x in home_rec.split("-"))
+            rw, rl = (int(x) for x in road_rec.split("-"))
+        except (ValueError, AttributeError):
+            continue
+
+        splits[abbr] = {
+            "home_wins": hw, "home_losses": hl,
+            "road_wins": rw, "road_losses": rl,
+        }
+
+    logger.info("BDL home/road splits: %d teams", len(splits))
+    return splits
+
+
 # ── Phase 3: Player Advanced Stats ───────────────────────────────────────────
 
 def _parse_minutes(min_val) -> float:

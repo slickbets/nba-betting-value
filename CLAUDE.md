@@ -127,7 +127,7 @@ Injury:     Elo adjustment = -abs(elo_impact) * status_multiplier
 ## Known Limitations
 
 - **Player impact fetch is slow**: BDL requires per-team pagination for advanced stats (~3 min). Runs every 3 days via staleness check.
-- **Home spread bias**: +2.76 pts over-prediction. Sweep confirms HCA=35 is still optimal.
+- **Home spread bias**: Reduced by sweep (HCA lowered from 35→25, DIV from 25→18).
 - **O/D Elo drift**: Offense avg ~1471, Defense avg ~1529. Structural; total conserved at 3000.
 - **O/D total correlation**: r=0.233 game-level (single-game variance too high).
 - **Season change**: Run `scripts/rebuild_elo.py --all` after changing seasons.

@@ -34,11 +34,93 @@ from src.models.rest_factor import (
     get_rest_adjustments_for_game,
     get_rest_description,
 )
-from config import ELO_HOME_ADVANTAGE, USE_OD_ELO
+from config import ELO_HOME_ADVANTAGE, ELO_SPREAD_DIVISOR, USE_OD_ELO, CURRENT_SEASON
 
 
 # Module-level cache for injuries data
 _injuries_cache: dict[str, pd.DataFrame] = {}
+
+# Module-level cache for team-specific HCA
+_hca_cache: dict[str, float] = {}
+_hca_cache_time: float = 0.0
+_HCA_CACHE_TTL = 3600  # 1 hour
+
+
+def _refresh_hca_cache() -> None:
+    """Fetch home/road splits from BDL and compute per-team HCA."""
+    global _hca_cache, _hca_cache_time
+    import time
+
+    try:
+        from src.data.bdl_fetcher import fetch_home_road_splits_bdl
+        splits = fetch_home_road_splits_bdl(CURRENT_SEASON)
+    except Exception as e:
+        logger.warning("Could not fetch home/road splits: %s", e)
+        return
+
+    if not splits or len(splits) < 10:
+        return
+
+    # Calculate league-average home-road edge
+    total_home_edge = 0.0
+    total_teams = 0
+    team_edges = {}
+    team_home_games = {}
+
+    for abbr, s in splits.items():
+        hg = s["home_wins"] + s["home_losses"]
+        rg = s["road_wins"] + s["road_losses"]
+        if hg == 0 or rg == 0:
+            continue
+        home_pct = s["home_wins"] / hg
+        road_pct = s["road_wins"] / rg
+        edge = home_pct - road_pct
+        team_edges[abbr] = edge
+        team_home_games[abbr] = hg
+        total_home_edge += edge
+        total_teams += 1
+
+    if total_teams == 0:
+        return
+
+    league_avg_edge = total_home_edge / total_teams
+
+    # Standard deviation of edges for z-score scaling
+    import math
+    variance = sum((e - league_avg_edge) ** 2 for e in team_edges.values()) / total_teams
+    std_edge = math.sqrt(variance) if variance > 0 else 1.0
+
+    # Compute per-team HCA using z-score deviation from league average
+    # 5 Elo per standard deviation — enough to differentiate without wild swings
+    ELO_PER_SD = 5.0
+    new_cache = {}
+    for abbr, edge in team_edges.items():
+        z = (edge - league_avg_edge) / std_edge
+        raw_hca = ELO_HOME_ADVANTAGE + z * ELO_PER_SD
+
+        # Regression toward mean based on home games played
+        confidence = min(team_home_games[abbr] / 30.0, 1.0)
+        team_hca = ELO_HOME_ADVANTAGE + (raw_hca - ELO_HOME_ADVANTAGE) * confidence
+
+        # Clamp to reasonable range [10, 45] Elo
+        team_hca = max(10.0, min(45.0, team_hca))
+        new_cache[abbr] = round(team_hca, 1)
+
+    _hca_cache = new_cache
+    _hca_cache_time = time.time()
+    logger.info("Updated team HCA cache: %d teams (league avg edge %.1f%%)",
+                len(new_cache), league_avg_edge * 100)
+
+
+def get_team_hca(home_team_abbr: str) -> float:
+    """Get team-specific home court advantage in Elo points."""
+    import time
+    global _hca_cache_time
+
+    if not _hca_cache or (time.time() - _hca_cache_time > _HCA_CACHE_TTL):
+        _refresh_hca_cache()
+
+    return _hca_cache.get(home_team_abbr, ELO_HOME_ADVANTAGE)
 
 
 @dataclass
@@ -115,6 +197,13 @@ def clear_injuries_cache():
     """Clear the injuries cache (useful for refreshing data)."""
     global _injuries_cache
     _injuries_cache = {}
+
+
+def clear_hca_cache():
+    """Clear the HCA cache (useful for forcing a refresh)."""
+    global _hca_cache, _hca_cache_time
+    _hca_cache = {}
+    _hca_cache_time = 0.0
 
 
 def predict_game(
@@ -229,6 +318,11 @@ def predict_game(
     home_elo_adjusted = home_elo_base + home_injury_adj + home_rest_adj
     away_elo_adjusted = away_elo_base + away_injury_adj + away_rest_adj
 
+    # Team-specific home court advantage
+    home_abbr = home_team['abbreviation']
+    team_hca = get_team_hca(home_abbr)
+    team_hca_points = team_hca / ELO_SPREAD_DIVISOR
+
     # Calculate predictions
     if od_elo_available:
         # Use O/D Elo for predictions (apply adjustments to both O and D)
@@ -241,17 +335,23 @@ def predict_game(
         away_d_adj = away_d_elo + adj_split
 
         # Calculate spread and total from O/D Elo
-        spread = od_elo_to_spread(home_o_adj, home_d_adj, away_o_adj, away_d_adj)
-        predicted_total = od_elo_to_total(home_o_adj, home_d_adj, away_o_adj, away_d_adj)
+        spread = od_elo_to_spread(home_o_adj, home_d_adj, away_o_adj, away_d_adj,
+                                  home_advantage_points=team_hca_points)
+        predicted_total = od_elo_to_total(home_o_adj, home_d_adj, away_o_adj, away_d_adj,
+                                          home_advantage_points=team_hca_points)
 
         # Win probability still uses composite (average of adjusted O and D)
         home_prob, away_prob = od_elo_to_win_prob(
-            home_o_adj, home_d_adj, away_o_adj, away_d_adj
+            home_o_adj, home_d_adj, away_o_adj, away_d_adj,
+            home_advantage=team_hca
         )
     else:
         # Fall back to composite Elo
-        home_prob, away_prob = calculate_win_probabilities(home_elo_adjusted, away_elo_adjusted)
-        spread = elo_to_spread(home_elo_adjusted, away_elo_adjusted)
+        home_prob, away_prob = calculate_win_probabilities(
+            home_elo_adjusted, away_elo_adjusted, home_advantage=team_hca
+        )
+        spread = elo_to_spread(home_elo_adjusted, away_elo_adjusted,
+                               home_advantage=team_hca)
         predicted_total = 0.0  # Not available without O/D Elo
 
     # Convert to fair odds
