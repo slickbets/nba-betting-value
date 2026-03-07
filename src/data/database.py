@@ -86,6 +86,12 @@ def init_database():
         if 'game_time' not in game_columns:
             cursor.execute("ALTER TABLE games ADD COLUMN game_time TEXT")
 
+        # Migration: Unique index prevents duplicate games (same date + teams)
+        cursor.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_games_date_teams
+            ON games(game_date, home_team_id, away_team_id)
+        """)
+
         # Migration: Add O/D Elo columns to teams if they don't exist
         cursor.execute("PRAGMA table_info(teams)")
         team_columns = [row[1] for row in cursor.fetchall()]
@@ -273,9 +279,24 @@ def upsert_game(game_id: str, season: str, game_date: str,
                 home_team_id: int, away_team_id: int,
                 home_score: int = None, away_score: int = None,
                 status: str = 'scheduled', game_time: str = None):
-    """Insert or update a game."""
+    """Insert or update a game.
+
+    Matches by game_id first, then by (date, home, away) to prevent duplicates
+    from different data sources creating separate entries for the same game.
+    """
     with get_connection() as conn:
         cursor = conn.cursor()
+
+        # Check if a game with same date+teams already exists under a different ID
+        cursor.execute(
+            "SELECT game_id FROM games WHERE game_date = ? AND home_team_id = ? AND away_team_id = ?",
+            (game_date, home_team_id, away_team_id),
+        )
+        existing = cursor.fetchone()
+        if existing:
+            # Use the existing game_id to avoid duplicates
+            game_id = existing[0]
+
         cursor.execute("""
             INSERT INTO games (game_id, season, game_date, game_time, home_team_id, away_team_id,
                               home_score, away_score, status)
