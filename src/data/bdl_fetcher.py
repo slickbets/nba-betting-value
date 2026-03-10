@@ -74,28 +74,41 @@ def bdl_season(season_str: str) -> int:
 
 # ── Core HTTP helpers ─────────────────────────────────────────────────────────
 
-def _bdl_get(endpoint: str, params: dict = None, version: str = "v1") -> Optional[dict]:
-    """Authenticated GET with rate limiting."""
+def _bdl_get(endpoint: str, params: dict = None, version: str = "v1",
+             max_retries: int = 3) -> Optional[dict]:
+    """Authenticated GET with rate limiting and retry on transient errors."""
     global _last_call_time
     if not BDL_API_KEY:
         logger.warning("BDL_API_KEY not configured")
         return None
 
-    elapsed = time.time() - _last_call_time
-    if elapsed < 0.3:
-        time.sleep(0.3 - elapsed)
-
     url = f"{BDL_BASE_URL}/{version}/{endpoint}"
     headers = {"Authorization": BDL_API_KEY}
 
-    try:
-        resp = requests.get(url, params=params, headers=headers, timeout=30)
-        _last_call_time = time.time()
-        resp.raise_for_status()
-        return resp.json()
-    except requests.exceptions.RequestException as e:
-        logger.error("BDL API error [%s]: %s", endpoint, e)
-        return None
+    for attempt in range(max_retries):
+        elapsed = time.time() - _last_call_time
+        if elapsed < 0.3:
+            time.sleep(0.3 - elapsed)
+
+        try:
+            resp = requests.get(url, params=params, headers=headers, timeout=30)
+            _last_call_time = time.time()
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            _last_call_time = time.time()
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt  # 1s, 2s backoff
+                logger.warning("BDL API retry %d/%d [%s]: %s (waiting %ds)",
+                               attempt + 1, max_retries, endpoint, type(e).__name__, wait)
+                time.sleep(wait)
+            else:
+                logger.error("BDL API error [%s] after %d retries: %s", endpoint, max_retries, e)
+                return None
+        except requests.exceptions.RequestException as e:
+            _last_call_time = time.time()
+            logger.error("BDL API error [%s]: %s", endpoint, e)
+            return None
 
 
 def _bdl_paginate(endpoint: str, params: dict = None, version: str = "v1") -> list[dict]:
@@ -396,6 +409,8 @@ def fetch_player_impact_bdl(season_str: str,
     """
     year = bdl_season(season_str)
     all_records = []
+    consecutive_failures = 0
+    max_consecutive_failures = 3
 
     for bdl_team_id, team_abbr in BDL_TO_ABBR.items():
         logger.debug("BDL player stats: processing %s...", team_abbr)
@@ -405,6 +420,15 @@ def fetch_player_impact_bdl(season_str: str,
 
         # Fetch advanced stats (has net_rating, usage_percentage)
         adv_entries = _bdl_paginate("stats/advanced", {"seasons[]": year, "team_ids[]": bdl_team_id})
+
+        # Track consecutive failures to abort early on widespread API issues
+        if not base_entries and not adv_entries:
+            consecutive_failures += 1
+            if consecutive_failures >= max_consecutive_failures:
+                logger.warning("BDL player impact: %d consecutive team failures, aborting early", consecutive_failures)
+                break
+        else:
+            consecutive_failures = 0
 
         # Index advanced stats by (player_id, game_id) for joining
         adv_by_key = {}

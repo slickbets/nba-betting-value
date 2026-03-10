@@ -24,7 +24,6 @@ cat > /etc/cron.d/daily-update <<'CRON'
 0 15 * * * root . /etc/environment; cd /app && /usr/local/bin/python scripts/daily_update.py >> /data/daily_update.log 2>&1
 CRON
 chmod 0644 /etc/cron.d/daily-update
-crontab /etc/cron.d/daily-update
 
 # Start cron daemon
 service cron start

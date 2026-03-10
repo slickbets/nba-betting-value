@@ -517,7 +517,7 @@ def _player_impact_is_fresh(max_age_days: int = 3) -> bool:
 
 def update_player_impact():
     """Update player impact ratings (BDL primary, cloud-friendly)."""
-    logger.info("7. Updating player impact ratings...")
+    logger.info("8. Updating player impact ratings...")
 
     # Skip if data is fresh — BDL per-team fetch takes ~3 minutes
     if _player_impact_is_fresh(max_age_days=3):
@@ -559,7 +559,7 @@ def update_player_impact():
 
 def auto_settle_bets():
     """Auto-settle bets where possible."""
-    logger.info("8. Checking for bets to settle...")
+    logger.info("7. Checking for bets to settle...")
 
     unsettled = get_unsettled_bets()
 
@@ -656,18 +656,20 @@ def main(force: bool = False):
     # Auto-update league avg score before Elo/predictions use it
     check_league_avg_score()
 
-    # Run updates
+    # Run updates (critical pipeline)
     update_game_results()
     update_elo_ratings()
     fetch_todays_games()
     fetch_injuries()
     generate_predictions()
     fetch_odds()
-    update_player_impact()
     auto_settle_bets()
 
-    # Mark as completed
+    # Mark as completed — critical pipeline is done
     mark_as_ran()
+
+    # Non-critical: player impact (slow, can fail without blocking next run)
+    update_player_impact()
 
     logger.info("=" * 50)
     logger.info("Daily update complete!")
