@@ -411,8 +411,16 @@ def fetch_player_impact_bdl(season_str: str,
     all_records = []
     consecutive_failures = 0
     max_consecutive_failures = 3
+    max_duration = 600  # 10 minute total timeout
+    start_time = time.time()
 
     for bdl_team_id, team_abbr in BDL_TO_ABBR.items():
+        # Abort if total time exceeds limit
+        elapsed = time.time() - start_time
+        if elapsed > max_duration:
+            logger.warning("BDL player impact: exceeded %ds time limit (%.0fs elapsed), aborting", max_duration, elapsed)
+            break
+
         logger.debug("BDL player stats: processing %s...", team_abbr)
 
         # Fetch base stats (has minutes) for this team's season
