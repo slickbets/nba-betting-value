@@ -126,7 +126,7 @@ Injury:     Elo adjustment = -abs(elo_impact) * status_multiplier
 
 ## Known Limitations
 
-- **Player impact fetch is slow**: BDL requires per-team pagination for advanced stats (~3 min). Runs every 3 days via staleness check.
+- **Player impact**: Uses `season_averages/general?type=advanced` (~7s) + `players/active` for team mapping. Runs every 3 days via staleness check.
 - **Home spread bias**: Reduced by sweep (HCA lowered from 35→25, DIV from 25→18).
 - **O/D Elo drift**: Offense avg ~1471, Defense avg ~1529. Structural; total conserved at 3000.
 - **O/D total correlation**: r=0.233 game-level (single-game variance too high).
@@ -155,12 +155,13 @@ st.markdown(
 
 ## Technical Debt
 
-- BDL player impact is slow (~3 min per refresh) — runs every 3 days via staleness check
 - `odds_fetcher.py:284` — Add spread/total support in `get_best_odds()`
 - `daily_update.py` silently degrades when API keys are missing — needs fail-fast + startup validation (SLB-17)
 
 ## Future Ideas
 
+- Lineups endpoint for starter/bench injury weighting (SLB-18)
+- Leaders endpoint for player impact validation (SLB-19)
 - Historical injury impact analysis
 - ML model using advanced stats
 - Multi-sport expansion

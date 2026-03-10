@@ -380,118 +380,65 @@ def fetch_home_road_splits_bdl(season_str: str) -> dict:
 
 # ── Phase 3: Player Advanced Stats ───────────────────────────────────────────
 
-def _parse_minutes(min_val) -> float:
-    """Parse BDL minutes field (string 'MM:SS', int, or float) → float minutes."""
-    if not min_val:
-        return 0.0
-    if isinstance(min_val, (int, float)):
-        return float(min_val)
-    if isinstance(min_val, str):
-        try:
-            parts = min_val.split(":")
-            return float(parts[0]) + float(parts[1]) / 60 if len(parts) == 2 else float(parts[0])
-        except (ValueError, IndexError):
-            return 0.0
-    return 0.0
-
 
 def fetch_player_impact_bdl(season_str: str,
                              min_mpg: float = 15.0,
                              min_gp: int = 20) -> pd.DataFrame:
     """
-    Fetch player advanced stats from BDL for injury impact calculations.
+    Fetch player advanced season averages from BDL for injury impact calculations.
 
-    Fetches all base stats and advanced stats for the season in bulk (two
-    paginated series), then joins and aggregates by player locally.
-
-    Note: team_ids[] is NOT supported on /v1/stats or /v1/stats/advanced
-    per BDL docs — those endpoints only support player_ids[], game_ids[],
-    seasons[], dates[], start_date, end_date.
+    Uses /v1/season_averages/general?type=advanced which returns pre-aggregated
+    season averages (net_rating, usg_pct, min, gp) — ~5 seconds vs 6+ minutes
+    with the per-game stats endpoints.
 
     Returns DataFrame with columns: player_id, player_name, team_abbr,
     net_rating, minutes_per_game, games_played, usg_pct, elo_impact
     """
     year = bdl_season(season_str)
-    max_duration = 600  # 10 minute total timeout
     start_time = time.time()
 
-    # Fetch ALL base stats for the season (has minutes, team info)
-    logger.info("BDL player impact: fetching base stats for season %d...", year)
-    base_entries = _bdl_paginate("stats", {"seasons[]": year})
-    if not base_entries:
-        logger.warning("BDL player impact: no base stats returned")
+    # Build player_id → team_abbr mapping from /v1/players/active
+    # (season_averages/general doesn't include team info in response)
+    logger.info("BDL player impact: fetching active roster for team mapping...")
+    player_roster = _bdl_paginate("players/active", {})
+    player_team_map = {}
+    for p in player_roster:
+        pid_roster = p.get("id")
+        team_obj = p.get("team", {})
+        if pid_roster and team_obj:
+            player_team_map[pid_roster] = team_obj.get("abbreviation", "???")
+    logger.info("BDL player impact: mapped %d players to teams (%.1fs)", len(player_team_map), time.time() - start_time)
+
+    logger.info("BDL player impact: fetching season averages (advanced) for %d...", year)
+    entries = _bdl_paginate("season_averages/general", {
+        "season": year,
+        "season_type": "regular",
+        "type": "advanced",
+    })
+    if not entries:
+        logger.warning("BDL player impact: no season averages returned")
         return pd.DataFrame()
-    logger.info("BDL player impact: %d base stat entries (%.0fs)", len(base_entries), time.time() - start_time)
+    logger.info("BDL player impact: %d player entries (%.1fs)", len(entries), time.time() - start_time)
 
-    # Check time limit before second fetch
-    elapsed = time.time() - start_time
-    if elapsed > max_duration:
-        logger.warning("BDL player impact: exceeded %ds time limit after base stats, aborting", max_duration)
-        return pd.DataFrame()
-
-    # Fetch ALL advanced stats for the season (has net_rating, usage_percentage)
-    logger.info("BDL player impact: fetching advanced stats...")
-    adv_entries = _bdl_paginate("stats/advanced", {"seasons[]": year})
-    logger.info("BDL player impact: %d advanced stat entries (%.0fs)", len(adv_entries), time.time() - start_time)
-
-    # Index advanced stats by (player_id, game_id) for joining
-    adv_by_key = {}
-    for entry in adv_entries:
-        pid = entry.get("player", {}).get("id")
-        gid = entry.get("game", {}).get("id")
-        if pid and gid:
-            adv_by_key[(pid, gid)] = entry
-
-    # Aggregate by player
-    player_agg = {}
-    for entry in base_entries:
+    all_records = []
+    for entry in entries:
         player = entry.get("player", {})
+        stats = entry.get("stats", {})
         pid = player.get("id")
-        gid = entry.get("game", {}).get("id")
-        team = entry.get("team", {})
         if not pid:
             continue
 
-        mins = _parse_minutes(entry.get("min", 0))
-
-        # Look up advanced stats for this player+game
-        adv = adv_by_key.get((pid, gid), {})
-
-        if pid not in player_agg:
-            player_agg[pid] = {
-                "player_name": f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
-                "team_abbr": team.get("abbreviation", "???"),
-                "total_min": 0,
-                "games": 0,
-                "net_ratings": [],
-                "usg_pcts": [],
-            }
-
-        # Update team to most recent (handles mid-season trades)
-        player_agg[pid]["team_abbr"] = team.get("abbreviation", player_agg[pid]["team_abbr"])
-        player_agg[pid]["total_min"] += mins
-        player_agg[pid]["games"] += 1
-
-        nr = adv.get("net_rating")
-        usg = adv.get("usage_percentage")
-        if nr is not None:
-            player_agg[pid]["net_ratings"].append(nr)
-        if usg is not None:
-            player_agg[pid]["usg_pcts"].append(usg)
-
-    # Filter qualified players and compute impact
-    all_records = []
-    for pid, agg in player_agg.items():
-        gp = agg["games"]
-        mpg = agg["total_min"] / gp if gp > 0 else 0
+        gp = stats.get("gp", 0)
+        mpg = stats.get("min", 0) or 0
+        net_rating = stats.get("net_rating", 0) or 0
+        usg_pct = stats.get("usg_pct", 0) or 0
 
         if mpg < min_mpg or gp < min_gp:
             continue
 
-        net_rating = sum(agg["net_ratings"]) / len(agg["net_ratings"]) if agg["net_ratings"] else 0
-        usg_pct = sum(agg["usg_pcts"]) / len(agg["usg_pcts"]) if agg["usg_pcts"] else 0
+        team_abbr = player_team_map.get(pid, "???")
 
-        # Same formula: NET_RATING * (MPG/48) * (USG%/0.20) * 1.5
+        # Formula: NET_RATING * (MPG/48) * (USG%/0.20) * 1.5
         if usg_pct > 0:
             elo_impact = net_rating * (mpg / 48) * (usg_pct / 0.20) * 1.5
         else:
@@ -501,10 +448,12 @@ def fetch_player_impact_bdl(season_str: str,
         gp_confidence = min(gp / 50, 1.0)
         elo_impact *= gp_confidence
 
+        player_name = f"{player.get('first_name', '')} {player.get('last_name', '')}".strip()
+
         all_records.append({
             "player_id": pid,
-            "player_name": agg["player_name"],
-            "team_abbr": agg["team_abbr"],
+            "player_name": player_name,
+            "team_abbr": team_abbr,
             "net_rating": net_rating,
             "minutes_per_game": mpg,
             "games_played": gp,
@@ -513,16 +462,16 @@ def fetch_player_impact_bdl(season_str: str,
         })
 
     df = pd.DataFrame(all_records)
-    logger.info("BDL: fetched impact stats for %d qualified players (%.0fs total)", len(df), time.time() - start_time)
+    logger.info("BDL: fetched impact stats for %d qualified players (%.1fs total)", len(df), time.time() - start_time)
     return df
 
 
 def fetch_team_ratings_bdl(season_str: str) -> pd.DataFrame:
     """
-    Fetch team OFF/DEF ratings from BDL standings for O/D Elo seeding.
+    Fetch team OFF/DEF ratings from BDL for O/D Elo seeding.
 
-    Computes team offensive/defensive ratings by aggregating per-game
-    advanced stats across all players on each team.
+    Uses /v1/team_season_averages/general?type=advanced which returns all 30
+    teams' off_rating/def_rating in a single call.
 
     Returns DataFrame with columns: team_id, team_abbr, off_rating, def_rating,
     offense_elo, defense_elo
@@ -530,26 +479,32 @@ def fetch_team_ratings_bdl(season_str: str) -> pd.DataFrame:
     year = bdl_season(season_str)
     league_avg_rating = 114.7
 
+    result = _bdl_get("team_season_averages/general", {
+        "season": year,
+        "season_type": "regular",
+        "type": "advanced",
+        "per_page": 100,
+    })
+    if not result:
+        logger.warning("BDL team ratings: no data returned")
+        return pd.DataFrame()
+
     records = []
-    for bdl_team_id, team_abbr in BDL_TO_ABBR.items():
+    for entry in result.get("data", []):
+        team = entry.get("team", {})
+        stats = entry.get("stats", {})
+
+        bdl_team_id = team.get("id")
         nba_id = BDL_TO_NBA_TEAM_ID.get(bdl_team_id)
         if not nba_id:
             continue
 
-        # Fetch advanced stats for team (paginated)
-        adv_entries = _bdl_paginate("stats/advanced", {"seasons[]": year, "team_ids[]": bdl_team_id})
-        if not adv_entries:
+        team_abbr = team.get("abbreviation") or BDL_TO_ABBR.get(bdl_team_id, "???")
+        off_rating = stats.get("off_rating", 0) or 0
+        def_rating = stats.get("def_rating", 0) or 0
+
+        if not off_rating or not def_rating:
             continue
-
-        # Average offensive and defensive ratings across all game entries
-        off_ratings = [e.get("offensive_rating", 0) for e in adv_entries if e.get("offensive_rating")]
-        def_ratings = [e.get("defensive_rating", 0) for e in adv_entries if e.get("defensive_rating")]
-
-        if not off_ratings or not def_ratings:
-            continue
-
-        off_rating = sum(off_ratings) / len(off_ratings)
-        def_rating = sum(def_ratings) / len(def_ratings)
 
         offense_elo = 1500 + (off_rating - league_avg_rating) * 25
         defense_elo = 1500 + (league_avg_rating - def_rating) * 25
