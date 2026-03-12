@@ -21,7 +21,7 @@ src/utils/              → Lightweight utilities (update status, live scores, f
 scripts/                → CLI tools (init_db, daily_update, backfill, param_sweep)
 data/                   → SQLite DB (NOT in git) + sweep_results/
 config.py               → All configuration constants + now_ct() timezone helper
-.streamlit/config.toml  → Dark theme config (bg #0E1117, accent #00C853)
+.streamlit/config.toml  → Dark theme config (bg #141414, accent #C9A84C)
 ```
 
 ## Key Files
@@ -67,7 +67,7 @@ config.py               → All configuration constants + now_ct() timezone help
 App runs on Fly.io (`ord` region) with persistent volume for SQLite. Pushes to `main` trigger GitHub Actions (test + deploy).
 
 - **App**: `nba-predictions-slick` at slick-bets.com
-- **Machine**: shared-cpu-1x, 512 MB RAM, Streamlit on port 8501
+- **Machine**: shared-cpu-1x, 1024 MB RAM, Streamlit on port 8501
 - **Volume**: `nba_data` (1 GB) mounted at `/data` — holds `nba_betting.db` and `.last_daily_update`
 - **Cron**: `daily_update.py` at 14:00 + 15:00 UTC (~9 AM CT)
 - **Env vars**: `DATA_DIR=/data`, `DB_PATH=/data/nba_betting.db` (defaults to local `data/` for dev)
@@ -75,10 +75,17 @@ App runs on Fly.io (`ord` region) with persistent volume for SQLite. Pushes to `
 
 ```bash
 fly deploy                                                    # Manual deploy
-fly ssh console -C "cd /app && python scripts/daily_update.py --force"  # Run update
-fly ssh console -C "cat /data/daily_update.log"               # View logs
+fly ssh console -C "/usr/local/bin/python /app/scripts/daily_update.py --force"  # Run update
+fly ssh console -C "cat /data/daily_update.log"                                  # View logs
 fly status                                                     # Check status
 ```
+
+**Operational gotchas:**
+- `fly ssh console -C` doesn't support shell builtins (`cd`) — always use absolute paths
+- SSH sessions timeout after ~10 min for long-running commands
+- Cron doesn't inherit Fly.io secrets — `start_production.sh` exports keys to `/etc/environment`, cron jobs source it
+- Only use `/etc/cron.d/` for cron (not also `crontab`) — dual registration causes double runs
+- OOM history: 256→512→1024 MB. Concurrent Streamlit + player impact fetch needs ≥1024 MB
 
 **Local automation (legacy):** launchd plist at `~/Library/LaunchAgents/com.nba-betting-value.daily-update.plist`
 
@@ -155,7 +162,7 @@ st.markdown(
 
 ## Technical Debt
 
-- `odds_fetcher.py:284` — Add spread/total support in `get_best_odds()`
+- `odds_fetcher.py:281` — Add spread/total support in `get_best_odds()`
 - `daily_update.py` silently degrades when API keys are missing — needs fail-fast + startup validation (SLB-17)
 
 ## Future Ideas
