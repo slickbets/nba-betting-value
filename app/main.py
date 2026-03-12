@@ -13,7 +13,7 @@ from src.data.database import init_database, get_connection, get_games_by_date
 from src.models.predictor import predict_game
 from src.utils.update_status import get_last_run_info
 from src.utils.time_utils import convert_et_to_ct
-from src.utils.live_scores import refresh_live_scores
+from src.utils.live_scores import refresh_live_scores, resolve_stale_games
 from app.shared import render_sidebar, confidence_badge, result_badge
 
 # Page configuration
@@ -310,7 +310,10 @@ def main():
     )
     date_str = selected_date.strftime("%Y-%m-%d")
 
-    # Auto-refresh live scores
+    # Resolve any stale in_progress games (yesterday or earlier)
+    resolve_stale_games()
+
+    # Auto-refresh live scores (today only — uses BDL live endpoint)
     if date_str == now_ct().strftime("%Y-%m-%d"):
         refresh_live_scores(date_str)
 

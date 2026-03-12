@@ -726,6 +726,16 @@ def clear_old_player_impacts(current_season: str) -> int:
         return deleted
 
 
+def get_stale_in_progress_dates() -> list[str]:
+    """Get distinct dates that have games stuck in 'in_progress' status."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT DISTINCT game_date FROM games WHERE status = 'in_progress' ORDER BY game_date"
+        )
+        return [row[0] for row in cursor.fetchall()]
+
+
 def get_league_avg_score(season: str) -> Optional[float]:
     """Calculate the actual league average score from completed games.
 

@@ -2,11 +2,67 @@
 
 import logging
 import streamlit as st
-from src.data.bdl_fetcher import fetch_live_scores_bdl
+from src.data.bdl_fetcher import fetch_games_bdl, fetch_live_scores_bdl
 from src.data.nba_fetcher import fetch_scoreboard_espn
-from src.data.database import get_games_by_date, upsert_game
+from src.data.database import get_games_by_date, get_stale_in_progress_dates, upsert_game
 
 logger = logging.getLogger(__name__)
+
+
+@st.cache_data(ttl=300)
+def resolve_stale_games() -> int:
+    """Resolve games stuck as 'in_progress' using the BDL games endpoint.
+
+    Checks the DB for any dates with in_progress games, then fetches the
+    real status from BDL (or ESPN fallback) and updates accordingly.
+    Cached for 5 minutes since stale games aren't time-sensitive.
+    """
+    stale_dates = get_stale_in_progress_dates()
+    if not stale_dates:
+        return 0
+
+    resolved = 0
+    for date_str in stale_dates:
+        games = fetch_games_bdl(date_str)
+
+        # ESPN fallback: match by abbreviation against DB games
+        if not games:
+            espn_games = fetch_scoreboard_espn(date_str)
+            if not espn_games:
+                continue
+            db_games = get_games_by_date(date_str)
+            if db_games.empty:
+                continue
+            for eg in espn_games:
+                match = db_games[
+                    (db_games['home_abbr'] == eg['home_abbr'])
+                    & (db_games['away_abbr'] == eg['away_abbr'])
+                ]
+                if match.empty or eg['status'] == 'in_progress':
+                    continue
+                row = match.iloc[0]
+                if row['status'] == 'in_progress':
+                    upsert_game(
+                        game_id=row['game_id'],
+                        season=row['season'],
+                        game_date=date_str,
+                        home_team_id=int(row['home_team_id']),
+                        away_team_id=int(row['away_team_id']),
+                        home_score=eg.get('home_score'),
+                        away_score=eg.get('away_score'),
+                        status=eg['status'],
+                    )
+                    resolved += 1
+            continue
+
+        for game in games:
+            if game['status'] != 'in_progress':
+                upsert_game(**game)
+                resolved += 1
+
+    if resolved:
+        logger.info("Resolved %d stale in_progress games", resolved)
+    return resolved
 
 
 @st.cache_data(ttl=60)

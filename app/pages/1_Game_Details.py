@@ -11,7 +11,7 @@ from config import ODDS_API_KEY, CURRENT_SEASON, now_ct
 from src.utils.time_utils import convert_et_to_ct
 from src.data.database import get_games_by_date, init_database
 from src.utils.update_status import get_last_run_info
-from src.utils.live_scores import refresh_live_scores
+from src.utils.live_scores import refresh_live_scores, resolve_stale_games
 from src.data.odds_fetcher import get_current_odds
 from src.models.predictor import predict_game, predictions_to_dataframe
 from app.shared import render_sidebar, confidence_badge
@@ -58,7 +58,10 @@ except Exception as e:
     st.error(f"Database error: {e}")
     st.stop()
 
-# Auto-refresh live scores
+# Resolve any stale in_progress games (yesterday or earlier)
+resolve_stale_games()
+
+# Auto-refresh live scores (today only — uses BDL live endpoint)
 if date_str == now_ct().strftime("%Y-%m-%d"):
     refresh_live_scores(date_str)
 
