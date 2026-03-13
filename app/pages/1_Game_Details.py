@@ -16,7 +16,7 @@ from src.data.odds_fetcher import get_current_odds
 from src.models.predictor import predict_game, predictions_to_dataframe
 from app.shared import render_sidebar, confidence_badge
 
-st.set_page_config(page_title="Game Details | Slick Bets", page_icon="SB", layout="wide")
+st.set_page_config(page_title="Game Details | Slick Bets", page_icon=str(Path(__file__).parent.parent.parent / "assets" / "favicon.png"), layout="wide")
 render_sidebar()
 
 st.markdown('<div class="page-header">Game Details</div>', unsafe_allow_html=True)

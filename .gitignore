@@ -38,3 +38,4 @@ data/sweep_results/
 
 # Claude Code
 .claude/
+.superpowers/

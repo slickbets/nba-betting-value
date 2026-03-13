@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from app.shared import render_sidebar
 
-st.set_page_config(page_title="Support | Slick Bets", page_icon="SB", layout="wide")
+st.set_page_config(page_title="Support | Slick Bets", page_icon=str(Path(__file__).parent.parent.parent / "assets" / "favicon.png"), layout="wide")
 render_sidebar()
 
 st.markdown('<div class="page-header">Support Slick Bets</div>', unsafe_allow_html=True)

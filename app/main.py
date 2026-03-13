@@ -9,6 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import CURRENT_SEASON, now_ct
+
+FAVICON = str(Path(__file__).parent.parent / "assets" / "favicon.png")
 from src.data.database import init_database, get_connection, get_games_by_date
 from src.models.predictor import predict_game
 from src.utils.update_status import get_last_run_info
@@ -19,7 +21,7 @@ from app.shared import render_sidebar, confidence_badge, result_badge
 # Page configuration
 st.set_page_config(
     page_title="Slick Bets",
-    page_icon="SB",
+    page_icon=FAVICON,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -229,7 +231,14 @@ def main():
     today = now_ct()
     st.markdown(
         '<div class="masthead">'
-        '<div class="masthead-title">Slick Bets</div>'
+        '<div class="masthead-title">'
+        '<svg width="42" height="42" viewBox="0 0 72 72" xmlns="http://www.w3.org/2000/svg" style="vertical-align:middle;margin-right:10px;">'
+        '<defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#C9A84C"/><stop offset="100%" style="stop-color:#a8893d"/></linearGradient></defs>'
+        '<rect x="2" y="2" width="68" height="68" rx="16" fill="url(#g)"/>'
+        '<text x="36" y="48" text-anchor="middle" font-family="Georgia,serif" font-size="36" font-weight="bold" fill="#141414" letter-spacing="1">SB</text>'
+        '</svg>'
+        'Slick Bets'
+        '</div>'
         f'<div class="masthead-dateline">{today.strftime("%B %d, %Y")}</div>'
         '<div class="masthead-desc">'
         'Elo-driven NBA predictions with injury adjustments and rest factors. Updated daily.'
